@@ -5,8 +5,8 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 
 Window {
-    width: 950
-    height: 700
+    width: 980
+    height: 750
     visible: true
     title: qsTr("Adulis Photoshop")
 
@@ -33,7 +33,6 @@ Window {
         anchors.fill: parent
         spacing: 0
 
-        // Barra de Menu Superior
         MenuBar {
             Layout.fillWidth: true
             Menu {
@@ -53,7 +52,6 @@ Window {
             }
         }
 
-        // Layout Principal (Painel Lateral + Visualizador)
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -61,15 +59,15 @@ Window {
             spacing: 15
 
             ScrollView {
-                Layout.preferredWidth: 260
+                Layout.preferredWidth: 310
                 Layout.fillHeight: true
 
                 ColumnLayout {
-                    width: parent.width
+                    width: parent.width - 15
                     spacing: 10
 
                     Button {
-                        text: "Resetar"
+                        text: "Resetar Imagem"
                         Layout.fillWidth: true
                         palette.buttonText: "#d9534f"
                         onClicked: backend.resetImage()
@@ -83,11 +81,37 @@ Window {
                         Layout.fillWidth: true
                         onClicked: backend.applyGrayscale()
                     }
-                    Button {
-                        text: "Ajuste de Brilho (+30)"
+
+                    // --- AJUSTE DE BRILHO ---
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        onClicked: backend.applyBrightness(30)
+                        spacing: 2
+
+                        Text {
+                            text: "Ajuste de Brilho: " + Math.round(brightnessSlider.value)
+                            font.pixelSize: 12
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Slider {
+                                id: brightnessSlider
+                                Layout.fillWidth: true
+                                from: -255
+                                to: 255
+                                value: 0
+                                stepSize: 1
+                            }
+                            Button {
+                                text: "Aplicar"
+                                onClicked: {
+                                    backend.applyBrightness(Math.round(brightnessSlider.value))
+                                    brightnessSlider.value = 0
+                                }
+                            }
+                        }
                     }
+
                     Button {
                         text: "Negativo da Imagem"
                         Layout.fillWidth: true
@@ -97,16 +121,96 @@ Window {
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
                     Text { text: "<b>Transformações Geométricas</b>" }
 
-                    Button {
-                        text: "Rotação (45º)"
+                    // --- ROTAÇÃO ---
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        onClicked: backend.applyRotation(45)
+                        spacing: 2
+
+                        Text {
+                            text: "Rotação: " + Math.round(rotationSlider.value) + "°"
+                            font.pixelSize: 12
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Slider {
+                                id: rotationSlider
+                                Layout.fillWidth: true
+                                from: -180
+                                to: 180
+                                value: 0
+                                stepSize: 1
+                            }
+                            Button {
+                                text: "Aplicar"
+                                onClicked: {
+                                    backend.applyRotation(rotationSlider.value)
+                                    rotationSlider.value = 0
+                                }
+                            }
+                        }
                     }
-                    Button {
-                        text: "Translação (X:50, Y:50)"
+
+                    // --- TRANSLAÇÃO (JOYSTICK) ---
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        onClicked: backend.applyTranslation(50, 50)
+                        spacing: 4
+
+                        Text {
+                            text: "Translação (Joystick)"
+                            font.pixelSize: 12
+                        }
+
+                        GridLayout {
+                            columns: 3
+                            rows: 3
+                            Layout.alignment: Qt.AlignHCenter
+
+                            Item { width: 40; height: 35 } // Espaço vazio topo-esquerdo
+
+                            Button {
+                                text: "▲"
+                                implicitWidth: 40
+                                implicitHeight: 35
+                                onClicked: backend.applyTranslation(0, -20)
+                            }
+
+                            Item { width: 40; height: 35 } // Espaço vazio topo-direito
+
+                            Button {
+                                text: "◄"
+                                implicitWidth: 40
+                                implicitHeight: 35
+                                onClicked: backend.applyTranslation(-20, 0)
+                            }
+
+                            Button {
+                                text: "●"
+                                implicitWidth: 40
+                                implicitHeight: 35
+                                onClicked: backend.applyTranslation(0, 0)
+                            }
+
+                            Button {
+                                text: "►"
+                                implicitWidth: 40
+                                implicitHeight: 35
+                                onClicked: backend.applyTranslation(20, 0)
+                            }
+
+                            Item { width: 40; height: 35 } // Espaço vazio baixo-esquerdo
+
+                            Button {
+                                text: "▼"
+                                implicitWidth: 40
+                                implicitHeight: 35
+                                onClicked: backend.applyTranslation(0, 20)
+                            }
+
+                            Item { width: 40; height: 35 } // Espaço vazio baixo-direito
+                        }
                     }
+
                     Button {
                         text: "Espelhamento Horizontal"
                         Layout.fillWidth: true

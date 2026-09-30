@@ -11,7 +11,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 class AdulisBackend(QObject):
     imageChanged = Signal(str)
     errorOcurred = Signal(str)
-    requestSaveAs = Signal()  # Comando enviado pelo backend para o QML abrir o "Salvar Como"
+    requestSaveAs = Signal()
 
     def __init__(self):
         super().__init__()
@@ -47,17 +47,14 @@ class AdulisBackend(QObject):
             path = file_url.replace("file:///", "").replace("file://", "")
 
         cv2.imwrite(path, self.current_image)
-        # Atualiza o caminho atual para que o arquivo salvo passe a ser a referência
         self.current_file_path = Path(path)
 
     @Slot()
     def saveDefault(self):
-        """O backend decide: se o arquivo base/editado existe, sobrescreve. Senão, age como 'Salvar Como'."""
         if self.current_image is None:
             self.errorOcurred.emit("Nenhuma imagem ativa para salvar.")
             return
 
-        # Se não há um arquivo original carregado, obriga a abrir o "Salvar Como"
         if self.current_file_path is None:
             self.requestSaveAs.emit()
             return
@@ -67,12 +64,10 @@ class AdulisBackend(QObject):
         suffix = self.current_file_path.suffix
         save_path = directory / f"{stem}_edited{suffix}"
 
-        # Se o arquivo _edited ainda não existir no disco, o backend decide agir como "Salvar Como"
         if not save_path.exists():
             self.requestSaveAs.emit()
             return
 
-        # Caso contrário, sobrescreve diretamente de forma automática
         cv2.imwrite(str(save_path), self.current_image)
 
     @Slot()
@@ -119,6 +114,7 @@ class AdulisBackend(QObject):
         center = (w / 2, h / 2)
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
 
+        # Recalcula as dimensões para garantir que a imagem ocupe o espaço total
         cos = np.abs(M[0, 0])
         sin = np.abs(M[0, 1])
         new_w = int((h * sin) + (w * cos))
@@ -126,7 +122,14 @@ class AdulisBackend(QObject):
         M[0, 2] += (new_w / 2) - center[0]
         M[1, 2] += (new_h / 2) - center[1]
 
-        self.current_image = cv2.warpAffine(img, M, (new_w, new_h), borderMode=cv2.BORDER_REPLICATE)
+        # Determina o valor do fundo branco conforme o formato (grayscale ou BGR)
+        border_val = (255, 255, 255) if len(img.shape) == 3 else 255
+
+        self.current_image = cv2.warpAffine(
+            img, M, (new_w, new_h),
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=border_val
+        )
         self._updateImage()
 
     @Slot(int, int)
@@ -135,7 +138,14 @@ class AdulisBackend(QObject):
         img = self.current_image
         h, w = img.shape[:2]
         M = np.float32([[1, 0, dx], [0, 1, dy]])
-        self.current_image = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
+
+        border_val = (255, 255, 255) if len(img.shape) == 3 else 255
+
+        self.current_image = cv2.warpAffine(
+            img, M, (w, h),
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=border_val
+        )
         self._updateImage()
 
     @Slot(int)
