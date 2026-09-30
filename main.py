@@ -4,10 +4,56 @@ import cv2
 import numpy as np
 import time
 from pathlib import Path
-from PySide6.QtCore import QObject, Slot, Signal, QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QObject, Slot, Signal, QUrl, QSize
+from PySide6.QtGui import QGuiApplication, QImage
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickImageProvider
 
+# ==========================================
+# 1. O PROVEDOR DE IMAGENS NA RAM
+# ==========================================
+class AdulisImageProvider(QQuickImageProvider):
+    """
+    Esta classe guarda as imagens geradas pelo OpenCV diretamente na memória RAM.
+    O QML chama 'requestImage' usando um link como 'image://adulis/main'
+    """
+    def __init__(self):
+        super().__init__(QQuickImageProvider.Image)
+        self.images = {}
+
+    def requestImage(self, id_str, size, requestedSize):
+        # Remove a query string (?t=...) que usamos para enganar o cache do QML
+        clean_id = id_str.split('?')[0]
+
+        if clean_id in self.images:
+            img = self.images[clean_id]
+            if size:
+                size.setWidth(img.width())
+                size.setHeight(img.height())
+            return img
+        return QImage()
+
+    def update_image(self, id_str, cv_img):
+        if cv_img is None:
+            return
+
+        # Converte a matriz do OpenCV (NumPy BGR) para QImage (Qt RGB) na RAM
+        if len(cv_img.shape) == 2: # Tons de cinza
+            h, w = cv_img.shape
+            bytes_per_line = w
+            qimg = QImage(cv_img.data, w, h, bytes_per_line, QImage.Format_Grayscale8)
+            self.images[id_str] = qimg.copy() # .copy() protege contra falhas de memória
+        else: # Colorida
+            h, w, ch = cv_img.shape
+            bytes_per_line = ch * w
+            rgb_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+            qimg = QImage(rgb_img.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            self.images[id_str] = qimg.copy()
+
+
+# ==========================================
+# 2. O BACKEND PRINCIPAL
+# ==========================================
 class AdulisBackend(QObject):
     imageChanged = Signal(str)
     histogramChanged = Signal(str)
@@ -15,13 +61,12 @@ class AdulisBackend(QObject):
     requestSaveAs = Signal()
     dimensionsChanged = Signal(int, int)
 
-    def __init__(self):
+    def __init__(self, image_provider):
         super().__init__()
+        self.provider = image_provider
         self.original_image = None
         self.current_image = None
         self.current_file_path = None
-        self.temp_path = Path(__file__).resolve().parent / "temp_output.png"
-        self.temp_hist_path = Path(__file__).resolve().parent / "temp_hist.png"
 
     @Slot(str)
     def loadImage(self, file_url):
@@ -39,6 +84,7 @@ class AdulisBackend(QObject):
         self.current_image = img.copy()
         self._updateImage(self.current_image)
 
+    # As funções de guardar continuam a usar o disco (o que é correto para salvar ficheiros permanentes)
     @Slot(str)
     def saveImage(self, file_url):
         if self.current_image is None:
@@ -67,10 +113,6 @@ class AdulisBackend(QObject):
         suffix = self.current_file_path.suffix
         save_path = directory / f"{stem}_edited{suffix}"
 
-        if not save_path.exists():
-            self.requestSaveAs.emit()
-            return
-
         cv2.imwrite(str(save_path), self.current_image)
 
     @Slot()
@@ -79,22 +121,24 @@ class AdulisBackend(QObject):
             self.current_image = self.original_image.copy()
             self._updateImage(self.current_image)
 
+    # ==========================================
+    # LÓGICA DE RENDERIZAÇÃO NA RAM
+    # ==========================================
     def _updateImage(self, img_to_show):
-        if img_to_show is None:
-            return
+        if img_to_show is None: return
         h, w = img_to_show.shape[:2]
         self.dimensionsChanged.emit(w, h)
 
-        # Atualiza a imagem principal
-        cv2.imwrite(str(self.temp_path), img_to_show)
-        file_url = QUrl.fromLocalFile(str(self.temp_path)).toString()
-        self.imageChanged.emit(f"{file_url}?t={int(time.time() * 1000)}")
+        # 1. Entrega a matriz ao provedor de RAM
+        self.provider.update_image("main", img_to_show)
 
-        # Atualiza o histograma
+        # 2. Avisa o QML para puxar a imagem virtual. O "?t=" força a atualização da interface
+        self.imageChanged.emit(f"image://adulis/main?t={int(time.time() * 1000)}")
+
+        # 3. Atualiza o histograma
         self._updateHistogram(img_to_show)
 
     def _updateHistogram(self, img):
-        """ Gera o histograma via OpenCV (ultrarrápido para tempo real) """
         h_hist, w_hist = 300, 400
         hist_img = np.full((h_hist, w_hist, 3), 245, dtype=np.uint8)
 
@@ -116,38 +160,32 @@ class AdulisBackend(QObject):
                     x2 = int((x+1) * w_hist / 256)
                     cv2.line(hist_img, (x1, y1), (x2, y2), col, 2)
 
-        cv2.imwrite(str(self.temp_hist_path), hist_img)
-        hist_url = QUrl.fromLocalFile(str(self.temp_hist_path)).toString()
-        self.histogramChanged.emit(f"{hist_url}?t={int(time.time() * 1000)}")
+        # Passa o histograma para a RAM em vez de guardar no disco
+        self.provider.update_image("hist", hist_img)
+        self.histogramChanged.emit(f"image://adulis/hist?t={int(time.time() * 1000)}")
 
     def _get_border_value(self, img):
         return (255, 255, 255) if len(img.shape) == 3 else 255
 
     # ==========================================
-    # LÓGICA DE PREVIEW E APLICAÇÃO
+    # TRANSFORMAÇÕES PONTUAIS & GEOMÉTRICAS
     # ==========================================
-
     @Slot(int, bool)
     def processBrightness(self, value, apply):
         if self.current_image is None: return
         img_int = np.int16(self.current_image) + value
         img_int = np.clip(img_int, 0, 255)
         res = np.uint8(img_int)
-
-        if apply:
-            self.current_image = res
+        if apply: self.current_image = res
         self._updateImage(res)
 
     @Slot(float, bool)
     def processContrast(self, factor, apply):
         if self.current_image is None: return
         img_float = self.current_image.astype(np.float32)
-
         res = (img_float - 127.5) * factor + 127.5
         res = np.clip(res, 0, 255).astype(np.uint8)
-
-        if apply:
-            self.current_image = res
+        if apply: self.current_image = res
         self._updateImage(res)
 
     @Slot(float, bool)
@@ -158,8 +196,7 @@ class AdulisBackend(QObject):
         center = (w / 2, h / 2)
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
 
-        cos = np.abs(M[0, 0])
-        sin = np.abs(M[0, 1])
+        cos, sin = np.abs(M[0, 0]), np.abs(M[0, 1])
         new_w = int((h * sin) + (w * cos))
         new_h = int((h * cos) + (w * sin))
         M[0, 2] += (new_w / 2) - center[0]
@@ -167,9 +204,7 @@ class AdulisBackend(QObject):
 
         border_val = self._get_border_value(img)
         res = cv2.warpAffine(img, M, (new_w, new_h), borderMode=cv2.BORDER_CONSTANT, borderValue=border_val)
-
-        if apply:
-            self.current_image = res
+        if apply: self.current_image = res
         self._updateImage(res)
 
     @Slot(int, int, bool)
@@ -179,16 +214,9 @@ class AdulisBackend(QObject):
         h, w = img.shape[:2]
         M = np.float32([[1, 0, dx], [0, 1, dy]])
         border_val = self._get_border_value(img)
-
         res = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_CONSTANT, borderValue=border_val)
-
-        if apply:
-            self.current_image = res
+        if apply: self.current_image = res
         self._updateImage(res)
-
-    # ==========================================
-    # DEMAIS TRANSFORMAÇÕES
-    # ==========================================
 
     @Slot()
     def applyContrastStretching(self):
@@ -197,8 +225,7 @@ class AdulisBackend(QObject):
         if len(img.shape) == 2:
             f_min, f_max = img.min(), img.max()
             if f_max > f_min:
-                stretched = ((img.astype(np.float32) - f_min) / (f_max - f_min)) * 255.0
-                self.current_image = np.uint8(stretched)
+                self.current_image = np.uint8(((img.astype(np.float32) - f_min) / (f_max - f_min)) * 255.0)
         else:
             stretched = np.zeros_like(img)
             for i in range(3):
@@ -216,7 +243,6 @@ class AdulisBackend(QObject):
         img = self.current_image
 
         if use_clahe:
-            # Equalização CLAHE (Adaptativa com Limite de Contraste)
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             if len(img.shape) == 2:
                 self.current_image = clahe.apply(img)
@@ -225,7 +251,6 @@ class AdulisBackend(QObject):
                 ycrcb[:, :, 0] = clahe.apply(ycrcb[:, :, 0])
                 self.current_image = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
         else:
-            # Equalização Global (Padrão, mais agressiva e causa ruído/posterização)
             if len(img.shape) == 2:
                 self.current_image = cv2.equalizeHist(img)
             else:
@@ -278,11 +303,17 @@ class AdulisBackend(QObject):
         self.current_image = np.uint8(noisy_img)
         self._updateImage(self.current_image)
 
+
 if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
 
-    backend = AdulisBackend()
+    # Inicia o provedor e regista-o com a tag "adulis"
+    image_provider = AdulisImageProvider()
+    engine.addImageProvider("adulis", image_provider)
+
+    # Inicia o Backend passando o provedor
+    backend = AdulisBackend(image_provider)
     engine.rootContext().setContextProperty("backend", backend)
 
     qml_file = Path(__file__).resolve().parent / "main.qml"
