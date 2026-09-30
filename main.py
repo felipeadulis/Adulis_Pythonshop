@@ -88,7 +88,7 @@ class AdulisBackend(QObject):
         file_url = QUrl.fromLocalFile(str(self.temp_path)).toString()
         self.imageChanged.emit(f"{file_url}?t={int(time.time() * 1000)}")
 
-    @Slot(int)
+    @Slot()
     def applyGrayscale(self):
         if self.current_image is None: return
         img = self.current_image.copy()
