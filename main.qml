@@ -5,18 +5,37 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 
 Window {
-    width: 980
-    height: 750
+    width: 1000
+    height: 800
     visible: true
-    title: qsTr("Adulis Photoshop")
+    title: qsTr("Adulis Pythonshop")
+
+    property int imgWidth: 800
+    property int imgHeight: 600
+
+    function resetOthers(activeControl) {
+        if (activeControl !== "brightness" && brightnessSlider.value !== 0) {
+            brightnessSlider.value = 0
+        }
+        if (activeControl !== "rotation" && rotationSlider.value !== 0) {
+            rotationSlider.value = 0
+        }
+        if (activeControl !== "joystick" && (joystickHandle.x !== 60 || joystickHandle.y !== 60)) {
+            centerJoystick()
+            backend.processTranslation(0, 0, false)
+        }
+    }
+
+    function centerJoystick() {
+        joystickHandle.x = (joystickPad.width - joystickHandle.width) / 2
+        joystickHandle.y = (joystickPad.height - joystickHandle.height) / 2
+    }
 
     FileDialog {
         id: openDialog
         title: "Abrir Imagem"
         nameFilters: ["Imagens (*.png *.jpg *.jpeg)"]
-        onAccepted: {
-            backend.loadImage(selectedFile.toString())
-        }
+        onAccepted: backend.loadImage(selectedFile.toString())
     }
 
     FileDialog {
@@ -24,9 +43,7 @@ Window {
         title: "Salvar Imagem Como"
         fileMode: FileDialog.SaveFile
         nameFilters: ["Imagens (*.png *.jpg *.jpeg)"]
-        onAccepted: {
-            backend.saveImage(selectedFile.toString())
-        }
+        onAccepted: backend.saveImage(selectedFile.toString())
     }
 
     ColumnLayout {
@@ -37,18 +54,9 @@ Window {
             Layout.fillWidth: true
             Menu {
                 title: qsTr("Arquivo")
-                MenuItem {
-                    text: qsTr("Abrir...")
-                    onTriggered: openDialog.open()
-                }
-                MenuItem {
-                    text: qsTr("Salvar")
-                    onTriggered: backend.saveDefault()
-                }
-                MenuItem {
-                    text: qsTr("Salvar Como...")
-                    onTriggered: saveAsDialog.open()
-                }
+                MenuItem { text: qsTr("Abrir..."); onTriggered: openDialog.open() }
+                MenuItem { text: qsTr("Salvar"); onTriggered: backend.saveDefault() }
+                MenuItem { text: qsTr("Salvar Como..."); onTriggered: saveAsDialog.open() }
             }
         }
 
@@ -59,7 +67,7 @@ Window {
             spacing: 15
 
             ScrollView {
-                Layout.preferredWidth: 310
+                Layout.preferredWidth: 320
                 Layout.fillHeight: true
 
                 ColumnLayout {
@@ -90,6 +98,7 @@ Window {
                         Text {
                             text: "Ajuste de Brilho: " + Math.round(brightnessSlider.value)
                             font.pixelSize: 12
+                            color: "#333"
                         }
 
                         RowLayout {
@@ -101,11 +110,55 @@ Window {
                                 to: 255
                                 value: 0
                                 stepSize: 1
+
+                                property real lastUpdate: 0
+                                property real clickTime: 0
+                                property bool resetPending: false
+
+                                // Timer dispara apenas após o mouse ser solto
+                                Timer {
+                                    id: brightResetTimer
+                                    interval: 50
+                                    onTriggered: {
+                                        brightnessSlider.value = 0
+                                        backend.processBrightness(0, false)
+                                        brightnessSlider.resetPending = false
+                                    }
+                                }
+
+                                onPressedChanged: {
+                                    if (pressed) {
+                                        let now = Date.now()
+                                        // Detecta duplo clique de forma segura
+                                        if (now - clickTime < 300) {
+                                            resetPending = true
+                                        } else {
+                                            resetOthers("brightness")
+                                        }
+                                        clickTime = now
+                                    } else {
+                                        // Quando solta o rato, se for duplo clique, zera. Senão, processa o arrasto.
+                                        if (resetPending) {
+                                            brightResetTimer.start()
+                                        } else {
+                                            backend.processBrightness(Math.round(value), false)
+                                        }
+                                    }
+                                }
+                                onValueChanged: {
+                                    if (pressed && !resetPending) {
+                                        let now = Date.now()
+                                        if (now - lastUpdate > 60) {
+                                            backend.processBrightness(Math.round(value), false)
+                                            lastUpdate = now
+                                        }
+                                    }
+                                }
                             }
                             Button {
                                 text: "Aplicar"
                                 onClicked: {
-                                    backend.applyBrightness(Math.round(brightnessSlider.value))
+                                    backend.processBrightness(Math.round(brightnessSlider.value), true)
                                     brightnessSlider.value = 0
                                 }
                             }
@@ -129,6 +182,7 @@ Window {
                         Text {
                             text: "Rotação: " + Math.round(rotationSlider.value) + "°"
                             font.pixelSize: 12
+                            color: "#333"
                         }
 
                         RowLayout {
@@ -140,74 +194,159 @@ Window {
                                 to: 180
                                 value: 0
                                 stepSize: 1
+
+                                property real lastUpdate: 0
+                                property real clickTime: 0
+                                property bool resetPending: false
+
+                                Timer {
+                                    id: rotResetTimer
+                                    interval: 50
+                                    onTriggered: {
+                                        rotationSlider.value = 0
+                                        backend.processRotation(0, false)
+                                        rotationSlider.resetPending = false
+                                    }
+                                }
+
+                                onPressedChanged: {
+                                    if (pressed) {
+                                        let now = Date.now()
+                                        if (now - clickTime < 300) {
+                                            resetPending = true
+                                        } else {
+                                            resetOthers("rotation")
+                                        }
+                                        clickTime = now
+                                    } else {
+                                        if (resetPending) {
+                                            rotResetTimer.start()
+                                        } else {
+                                            backend.processRotation(value, false)
+                                        }
+                                    }
+                                }
+                                onValueChanged: {
+                                    if (pressed && !resetPending) {
+                                        let now = Date.now()
+                                        if (now - lastUpdate > 60) {
+                                            backend.processRotation(value, false)
+                                            lastUpdate = now
+                                        }
+                                    }
+                                }
                             }
                             Button {
                                 text: "Aplicar"
                                 onClicked: {
-                                    backend.applyRotation(rotationSlider.value)
+                                    backend.processRotation(rotationSlider.value, true)
                                     rotationSlider.value = 0
                                 }
                             }
                         }
                     }
 
-                    // --- TRANSLAÇÃO (JOYSTICK) ---
+                    // --- TRANSLAÇÃO ---
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
 
                         Text {
-                            text: "Translação (Joystick)"
+                            text: "Translação X: " + Math.round(joystickHandle.dx) + "px | Y: " + Math.round(joystickHandle.dy) + "px"
                             font.pixelSize: 12
+                            color: "#333"
                         }
 
-                        GridLayout {
-                            columns: 3
-                            rows: 3
-                            Layout.alignment: Qt.AlignHCenter
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
 
-                            Item { width: 40; height: 35 } // Espaço vazio topo-esquerdo
+                            Rectangle {
+                                id: joystickPad
+                                width: 140
+                                height: 140
+                                color: "#f0f0f0"
+                                border.color: "#888888"
+                                border.width: 1
 
-                            Button {
-                                text: "▲"
-                                implicitWidth: 40
-                                implicitHeight: 35
-                                onClicked: backend.applyTranslation(0, -20)
+                                Rectangle { width: parent.width; height: 1; color: "#dddddd"; anchors.centerIn: parent }
+                                Rectangle { width: 1; height: parent.height; color: "#dddddd"; anchors.centerIn: parent }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: (mouse) => {
+                                        resetOthers("joystick")
+                                        let maxTravel = joystickPad.width - joystickHandle.width
+                                        let nx = mouse.x - joystickHandle.width / 2
+                                        let ny = mouse.y - joystickHandle.height / 2
+
+                                        joystickHandle.x = Math.max(0, Math.min(nx, maxTravel))
+                                        joystickHandle.y = Math.max(0, Math.min(ny, maxTravel))
+                                        backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
+                                    }
+
+                                    onDoubleClicked: joyResetTimer.start()
+
+                                    Timer {
+                                        id: joyResetTimer
+                                        interval: 50
+                                        onTriggered: {
+                                            centerJoystick()
+                                            backend.processTranslation(0, 0, false)
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    id: joystickHandle
+                                    width: 20
+                                    height: 20
+                                    radius: 10
+                                    color: "#007acc"
+                                    x: 60
+                                    y: 60
+
+                                    property real dx: ((x / 120) * 2 - 1) * imgWidth
+                                    property real dy: ((y / 120) * 2 - 1) * imgHeight
+                                    property real lastUpdate: 0
+
+                                    DragHandler {
+                                        id: dragHandler
+                                        target: joystickHandle
+                                        xAxis.minimum: 0
+                                        xAxis.maximum: joystickPad.width - joystickHandle.width
+                                        yAxis.minimum: 0
+                                        yAxis.maximum: joystickPad.height - joystickHandle.height
+
+                                        onActiveChanged: {
+                                            if (active) resetOthers("joystick")
+                                            else backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
+                                        }
+                                    }
+
+                                    onXChanged: throttleUpdate()
+                                    onYChanged: throttleUpdate()
+
+                                    function throttleUpdate() {
+                                        if (dragHandler.active) {
+                                            let now = Date.now()
+                                            if (now - lastUpdate > 60) {
+                                                backend.processTranslation(Math.round(dx), Math.round(dy), false)
+                                                lastUpdate = now
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
-                            Item { width: 40; height: 35 } // Espaço vazio topo-direito
-
                             Button {
-                                text: "◄"
-                                implicitWidth: 40
-                                implicitHeight: 35
-                                onClicked: backend.applyTranslation(-20, 0)
+                                text: "Aplicar"
+                                Layout.alignment: Qt.AlignVCenter
+                                onClicked: {
+                                    backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), true)
+                                    centerJoystick()
+                                }
                             }
-
-                            Button {
-                                text: "●"
-                                implicitWidth: 40
-                                implicitHeight: 35
-                                onClicked: backend.applyTranslation(0, 0)
-                            }
-
-                            Button {
-                                text: "►"
-                                implicitWidth: 40
-                                implicitHeight: 35
-                                onClicked: backend.applyTranslation(20, 0)
-                            }
-
-                            Item { width: 40; height: 35 } // Espaço vazio baixo-esquerdo
-
-                            Button {
-                                text: "▼"
-                                implicitWidth: 40
-                                implicitHeight: 35
-                                onClicked: backend.applyTranslation(0, 20)
-                            }
-
-                            Item { width: 40; height: 35 } // Espaço vazio baixo-direito
                         }
                     }
 
@@ -260,6 +399,10 @@ Window {
         function onImageChanged(imgUrl) {
             imageViewer.source = ""
             imageViewer.source = imgUrl
+        }
+        function onDimensionsChanged(w, h) {
+            imgWidth = w;
+            imgHeight = h;
         }
         function onErrorOcurred(msg) {
             console.warn(msg)

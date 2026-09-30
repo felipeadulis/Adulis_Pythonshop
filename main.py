@@ -12,6 +12,8 @@ class AdulisBackend(QObject):
     imageChanged = Signal(str)
     errorOcurred = Signal(str)
     requestSaveAs = Signal()
+    # Sinal novo para informar o QML sobre a largura e altura máximas atuais
+    dimensionsChanged = Signal(int, int)
 
     def __init__(self):
         super().__init__()
@@ -34,7 +36,7 @@ class AdulisBackend(QObject):
         self.current_file_path = Path(path)
         self.original_image = img.copy()
         self.current_image = img.copy()
-        self._updateImage()
+        self._updateImage(self.current_image)
 
     @Slot(str)
     def saveImage(self, file_url):
@@ -74,14 +76,76 @@ class AdulisBackend(QObject):
     def resetImage(self):
         if self.original_image is not None:
             self.current_image = self.original_image.copy()
-            self._updateImage()
+            self._updateImage(self.current_image)
 
-    def _updateImage(self):
-        if self.current_image is None:
+    def _updateImage(self, img_to_show):
+        if img_to_show is None:
             return
-        cv2.imwrite(str(self.temp_path), self.current_image)
+        # Emite as dimensões atuais para recalibrar o limite do Joystick
+        h, w = img_to_show.shape[:2]
+        self.dimensionsChanged.emit(w, h)
+
+        cv2.imwrite(str(self.temp_path), img_to_show)
         file_url = QUrl.fromLocalFile(str(self.temp_path)).toString()
         self.imageChanged.emit(f"{file_url}?t={int(time.time() * 1000)}")
+
+    def _get_border_value(self, img):
+        return (255, 255, 255) if len(img.shape) == 3 else 255
+
+    # ==========================================
+    # LÓGICA DE PREVIEW E APLICAÇÃO
+    # ==========================================
+
+    @Slot(int, bool)
+    def processBrightness(self, value, apply):
+        if self.current_image is None: return
+        img_int = np.int16(self.current_image) + value
+        img_int = np.clip(img_int, 0, 255)
+        res = np.uint8(img_int)
+
+        if apply:
+            self.current_image = res
+        self._updateImage(res)
+
+    @Slot(float, bool)
+    def processRotation(self, angle, apply):
+        if self.current_image is None: return
+        img = self.current_image
+        h, w = img.shape[:2]
+        center = (w / 2, h / 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+
+        cos = np.abs(M[0, 0])
+        sin = np.abs(M[0, 1])
+        new_w = int((h * sin) + (w * cos))
+        new_h = int((h * cos) + (w * sin))
+        M[0, 2] += (new_w / 2) - center[0]
+        M[1, 2] += (new_h / 2) - center[1]
+
+        border_val = self._get_border_value(img)
+        res = cv2.warpAffine(img, M, (new_w, new_h), borderMode=cv2.BORDER_CONSTANT, borderValue=border_val)
+
+        if apply:
+            self.current_image = res
+        self._updateImage(res)
+
+    @Slot(int, int, bool)
+    def processTranslation(self, dx, dy, apply):
+        if self.current_image is None: return
+        img = self.current_image
+        h, w = img.shape[:2]
+        M = np.float32([[1, 0, dx], [0, 1, dy]])
+        border_val = self._get_border_value(img)
+
+        res = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_CONSTANT, borderValue=border_val)
+
+        if apply:
+            self.current_image = res
+        self._updateImage(res)
+
+    # ==========================================
+    # DEMAIS TRANSFORMAÇÕES
+    # ==========================================
 
     @Slot()
     def applyGrayscale(self):
@@ -90,81 +154,31 @@ class AdulisBackend(QObject):
         if len(img.shape) == 3:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         self.current_image = img
-        self._updateImage()
-
-    @Slot(int)
-    def applyBrightness(self, value):
-        if self.current_image is None: return
-        img_int = np.int16(self.current_image) + value
-        img_int = np.clip(img_int, 0, 255)
-        self.current_image = np.uint8(img_int)
-        self._updateImage()
+        self._updateImage(self.current_image)
 
     @Slot()
     def applyNegative(self):
         if self.current_image is None: return
         self.current_image = 255 - self.current_image
-        self._updateImage()
-
-    @Slot(float)
-    def applyRotation(self, angle):
-        if self.current_image is None: return
-        img = self.current_image
-        h, w = img.shape[:2]
-        center = (w / 2, h / 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-
-        # Recalcula as dimensões para garantir que a imagem ocupe o espaço total
-        cos = np.abs(M[0, 0])
-        sin = np.abs(M[0, 1])
-        new_w = int((h * sin) + (w * cos))
-        new_h = int((h * cos) + (w * sin))
-        M[0, 2] += (new_w / 2) - center[0]
-        M[1, 2] += (new_h / 2) - center[1]
-
-        # Determina o valor do fundo branco conforme o formato (grayscale ou BGR)
-        border_val = (255, 255, 255) if len(img.shape) == 3 else 255
-
-        self.current_image = cv2.warpAffine(
-            img, M, (new_w, new_h),
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=border_val
-        )
-        self._updateImage()
-
-    @Slot(int, int)
-    def applyTranslation(self, dx, dy):
-        if self.current_image is None: return
-        img = self.current_image
-        h, w = img.shape[:2]
-        M = np.float32([[1, 0, dx], [0, 1, dy]])
-
-        border_val = (255, 255, 255) if len(img.shape) == 3 else 255
-
-        self.current_image = cv2.warpAffine(
-            img, M, (w, h),
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=border_val
-        )
-        self._updateImage()
+        self._updateImage(self.current_image)
 
     @Slot(int)
     def applyMirror(self, flipCode):
         if self.current_image is None: return
         self.current_image = cv2.flip(self.current_image, flipCode)
-        self._updateImage()
+        self._updateImage(self.current_image)
 
     @Slot(int)
     def applyMeanFilter(self, kernel_size):
         if self.current_image is None: return
         self.current_image = cv2.blur(self.current_image, (kernel_size, kernel_size), borderType=cv2.BORDER_REPLICATE)
-        self._updateImage()
+        self._updateImage(self.current_image)
 
     @Slot(int, float)
     def applyGaussianFilter(self, kernel_size, sigma):
         if self.current_image is None: return
         self.current_image = cv2.GaussianBlur(self.current_image, (kernel_size, kernel_size), sigma, borderType=cv2.BORDER_REPLICATE)
-        self._updateImage()
+        self._updateImage(self.current_image)
 
     @Slot()
     def addNoise(self):
@@ -174,7 +188,7 @@ class AdulisBackend(QObject):
         noisy_img = np.int16(img) + noise
         noisy_img = np.clip(noisy_img, 0, 255)
         self.current_image = np.uint8(noisy_img)
-        self._updateImage()
+        self._updateImage(self.current_image)
 
 if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
