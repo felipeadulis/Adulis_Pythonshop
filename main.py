@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 import time
 from pathlib import Path
-
 from PySide6.QtCore import QObject, Slot, Signal, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
@@ -12,21 +11,17 @@ from PySide6.QtQml import QQmlApplicationEngine
 class AdulisBackend(QObject):
     imageChanged = Signal(str)
     errorOcurred = Signal(str)
+    requestSaveAs = Signal()  # Comando enviado pelo backend para o QML abrir o "Salvar Como"
 
     def __init__(self):
         super().__init__()
         self.original_image = None
         self.current_image = None
+        self.current_file_path = None
         self.temp_path = Path(__file__).resolve().parent / "temp_output.png"
-        self.use_original = False
-
-    @Slot(bool)
-    def setUseOriginal(self, use_orig):
-        self.use_original = use_orig
 
     @Slot(str)
     def loadImage(self, file_url):
-        # Converte a URL do QML para um caminho de ficheiro válido no sistema local
         path = QUrl(file_url).toLocalFile()
         if not path:
             path = file_url.replace("file:///", "").replace("file://", "")
@@ -36,29 +31,67 @@ class AdulisBackend(QObject):
             self.errorOcurred.emit("Falha ao carregar a imagem. Verifique o caminho ou formato.")
             return
 
+        self.current_file_path = Path(path)
         self.original_image = img.copy()
         self.current_image = img.copy()
         self._updateImage()
 
-    def _getSourceImage(self):
-        if self.original_image is None:
-            return None
-        if self.use_original:
-            return self.original_image.copy()
-        return self.current_image.copy()
+    @Slot(str)
+    def saveImage(self, file_url):
+        if self.current_image is None:
+            self.errorOcurred.emit("Nenhuma imagem para salvar.")
+            return
+
+        path = QUrl(file_url).toLocalFile()
+        if not path:
+            path = file_url.replace("file:///", "").replace("file://", "")
+
+        cv2.imwrite(path, self.current_image)
+        # Atualiza o caminho atual para que o arquivo salvo passe a ser a referência
+        self.current_file_path = Path(path)
+
+    @Slot()
+    def saveDefault(self):
+        """O backend decide: se o arquivo base/editado existe, sobrescreve. Senão, age como 'Salvar Como'."""
+        if self.current_image is None:
+            self.errorOcurred.emit("Nenhuma imagem ativa para salvar.")
+            return
+
+        # Se não há um arquivo original carregado, obriga a abrir o "Salvar Como"
+        if self.current_file_path is None:
+            self.requestSaveAs.emit()
+            return
+
+        directory = self.current_file_path.parent
+        stem = self.current_file_path.stem
+        suffix = self.current_file_path.suffix
+        save_path = directory / f"{stem}_edited{suffix}"
+
+        # Se o arquivo _edited ainda não existir no disco, o backend decide agir como "Salvar Como"
+        if not save_path.exists():
+            self.requestSaveAs.emit()
+            return
+
+        # Caso contrário, sobrescreve diretamente de forma automática
+        cv2.imwrite(str(save_path), self.current_image)
+
+    @Slot()
+    def resetImage(self):
+        if self.original_image is not None:
+            self.current_image = self.original_image.copy()
+            self._updateImage()
 
     def _updateImage(self):
         if self.current_image is None:
             return
         cv2.imwrite(str(self.temp_path), self.current_image)
-        # Gera uma URL do tipo file:/// com carimbo de data/hora para forçar o recarregamento no QML
         file_url = QUrl.fromLocalFile(str(self.temp_path)).toString()
         self.imageChanged.emit(f"{file_url}?t={int(time.time() * 1000)}")
 
-    @Slot()
+    @Slot(int)
     def applyGrayscale(self):
-        img = self._getSourceImage()
-        if img is None: return
+        if self.current_image is None: return
+        img = self.current_image.copy()
         if len(img.shape) == 3:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         self.current_image = img
@@ -66,34 +99,40 @@ class AdulisBackend(QObject):
 
     @Slot(int)
     def applyBrightness(self, value):
-        img = self._getSourceImage()
-        if img is None: return
-        img_int = np.int16(img) + value
+        if self.current_image is None: return
+        img_int = np.int16(self.current_image) + value
         img_int = np.clip(img_int, 0, 255)
         self.current_image = np.uint8(img_int)
         self._updateImage()
 
     @Slot()
     def applyNegative(self):
-        img = self._getSourceImage()
-        if img is None: return
-        self.current_image = 255 - img
+        if self.current_image is None: return
+        self.current_image = 255 - self.current_image
         self._updateImage()
 
     @Slot(float)
     def applyRotation(self, angle):
-        img = self._getSourceImage()
-        if img is None: return
+        if self.current_image is None: return
+        img = self.current_image
         h, w = img.shape[:2]
-        center = (w // 2, h // 2)
+        center = (w / 2, h / 2)
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        self.current_image = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
+
+        cos = np.abs(M[0, 0])
+        sin = np.abs(M[0, 1])
+        new_w = int((h * sin) + (w * cos))
+        new_h = int((h * cos) + (w * sin))
+        M[0, 2] += (new_w / 2) - center[0]
+        M[1, 2] += (new_h / 2) - center[1]
+
+        self.current_image = cv2.warpAffine(img, M, (new_w, new_h), borderMode=cv2.BORDER_REPLICATE)
         self._updateImage()
 
     @Slot(int, int)
     def applyTranslation(self, dx, dy):
-        img = self._getSourceImage()
-        if img is None: return
+        if self.current_image is None: return
+        img = self.current_image
         h, w = img.shape[:2]
         M = np.float32([[1, 0, dx], [0, 1, dy]])
         self.current_image = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
@@ -101,29 +140,26 @@ class AdulisBackend(QObject):
 
     @Slot(int)
     def applyMirror(self, flipCode):
-        img = self._getSourceImage()
-        if img is None: return
-        self.current_image = cv2.flip(img, flipCode)
+        if self.current_image is None: return
+        self.current_image = cv2.flip(self.current_image, flipCode)
         self._updateImage()
 
     @Slot(int)
     def applyMeanFilter(self, kernel_size):
-        img = self._getSourceImage()
-        if img is None: return
-        self.current_image = cv2.blur(img, (kernel_size, kernel_size), borderType=cv2.BORDER_REPLICATE)
+        if self.current_image is None: return
+        self.current_image = cv2.blur(self.current_image, (kernel_size, kernel_size), borderType=cv2.BORDER_REPLICATE)
         self._updateImage()
 
     @Slot(int, float)
     def applyGaussianFilter(self, kernel_size, sigma):
-        img = self._getSourceImage()
-        if img is None: return
-        self.current_image = cv2.GaussianBlur(img, (kernel_size, kernel_size), sigma, borderType=cv2.BORDER_REPLICATE)
+        if self.current_image is None: return
+        self.current_image = cv2.GaussianBlur(self.current_image, (kernel_size, kernel_size), sigma, borderType=cv2.BORDER_REPLICATE)
         self._updateImage()
 
     @Slot()
     def addNoise(self):
-        img = self._getSourceImage()
-        if img is None: return
+        if self.current_image is None: return
+        img = self.current_image
         noise = np.random.normal(0, 25, img.shape).astype(np.int16)
         noisy_img = np.int16(img) + noise
         noisy_img = np.clip(noisy_img, 0, 255)
