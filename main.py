@@ -12,7 +12,6 @@ class AdulisBackend(QObject):
     imageChanged = Signal(str)
     errorOcurred = Signal(str)
     requestSaveAs = Signal()
-    # Sinal novo para informar o QML sobre a largura e altura máximas atuais
     dimensionsChanged = Signal(int, int)
 
     def __init__(self):
@@ -81,7 +80,6 @@ class AdulisBackend(QObject):
     def _updateImage(self, img_to_show):
         if img_to_show is None:
             return
-        # Emite as dimensões atuais para recalibrar o limite do Joystick
         h, w = img_to_show.shape[:2]
         self.dimensionsChanged.emit(w, h)
 
@@ -102,6 +100,19 @@ class AdulisBackend(QObject):
         img_int = np.int16(self.current_image) + value
         img_int = np.clip(img_int, 0, 255)
         res = np.uint8(img_int)
+
+        if apply:
+            self.current_image = res
+        self._updateImage(res)
+
+    @Slot(float, bool)
+    def processContrast(self, factor, apply):
+        """Aplica o fator de contraste centralizado em 127.5"""
+        if self.current_image is None: return
+        img_float = self.current_image.astype(np.float32)
+
+        res = (img_float - 127.5) * factor + 127.5
+        res = np.clip(res, 0, 255).astype(np.uint8)
 
         if apply:
             self.current_image = res
