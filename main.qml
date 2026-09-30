@@ -115,7 +115,6 @@ Window {
                                 property real clickTime: 0
                                 property bool resetPending: false
 
-                                // Timer dispara apenas após o mouse ser solto
                                 Timer {
                                     id: brightResetTimer
                                     interval: 50
@@ -129,7 +128,6 @@ Window {
                                 onPressedChanged: {
                                     if (pressed) {
                                         let now = Date.now()
-                                        // Detecta duplo clique de forma segura
                                         if (now - clickTime < 300) {
                                             resetPending = true
                                         } else {
@@ -137,7 +135,6 @@ Window {
                                         }
                                         clickTime = now
                                     } else {
-                                        // Quando solta o rato, se for duplo clique, zera. Senão, processa o arrasto.
                                         if (resetPending) {
                                             brightResetTimer.start()
                                         } else {
@@ -269,34 +266,53 @@ Window {
                                 border.color: "#888888"
                                 border.width: 1
 
+                                // Memória global do joystick (partilhada entre o fundo e a bolinha)
+                                property real globalClickTime: 0
+
                                 Rectangle { width: parent.width; height: 1; color: "#dddddd"; anchors.centerIn: parent }
                                 Rectangle { width: 1; height: parent.height; color: "#dddddd"; anchors.centerIn: parent }
 
+                                // Temporizador de reset unificado
+                                Timer {
+                                    id: joyGlobalResetTimer
+                                    interval: 10
+                                    onTriggered: {
+                                        centerJoystick()
+                                        backend.processTranslation(0, 0, false)
+                                    }
+                                }
+
+                                // Camada do Fundo (MouseArea)
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: (mouse) => {
-                                        resetOthers("joystick")
-                                        let maxTravel = joystickPad.width - joystickHandle.width
-                                        let nx = mouse.x - joystickHandle.width / 2
-                                        let ny = mouse.y - joystickHandle.height / 2
+                                    property bool resetPending: false
 
-                                        joystickHandle.x = Math.max(0, Math.min(nx, maxTravel))
-                                        joystickHandle.y = Math.max(0, Math.min(ny, maxTravel))
-                                        backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
+                                    onPressed: (mouse) => {
+                                        let now = Date.now()
+                                        if (now - joystickPad.globalClickTime < 300) {
+                                            resetPending = true
+                                            joystickPad.globalClickTime = 0 // Evita clique triplo
+                                        } else {
+                                            joystickPad.globalClickTime = now
+                                            resetOthers("joystick")
+                                            let maxTravel = joystickPad.width - joystickHandle.width
+                                            let nx = mouse.x - joystickHandle.width / 2
+                                            let ny = mouse.y - joystickHandle.height / 2
+
+                                            joystickHandle.x = Math.max(0, Math.min(nx, maxTravel))
+                                            joystickHandle.y = Math.max(0, Math.min(ny, maxTravel))
+                                            backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
+                                        }
                                     }
-
-                                    onDoubleClicked: joyResetTimer.start()
-
-                                    Timer {
-                                        id: joyResetTimer
-                                        interval: 50
-                                        onTriggered: {
-                                            centerJoystick()
-                                            backend.processTranslation(0, 0, false)
+                                    onReleased: {
+                                        if (resetPending) {
+                                            joyGlobalResetTimer.start()
+                                            resetPending = false
                                         }
                                     }
                                 }
 
+                                // Camada da Bolinha (Handle)
                                 Rectangle {
                                     id: joystickHandle
                                     width: 20
@@ -309,6 +325,28 @@ Window {
                                     property real dx: ((x / 120) * 2 - 1) * imgWidth
                                     property real dy: ((y / 120) * 2 - 1) * imgHeight
                                     property real lastUpdate: 0
+
+                                    // TapHandler focado APENAS na bolinha (impede o roubo do duplo clique)
+                                    TapHandler {
+                                        property bool resetPending: false
+                                        onPressedChanged: {
+                                            if (pressed) {
+                                                let now = Date.now()
+                                                if (now - joystickPad.globalClickTime < 300) {
+                                                    resetPending = true
+                                                    joystickPad.globalClickTime = 0
+                                                } else {
+                                                    joystickPad.globalClickTime = now
+                                                    resetOthers("joystick")
+                                                }
+                                            } else { // onReleased
+                                                if (resetPending) {
+                                                    joyGlobalResetTimer.start()
+                                                    resetPending = false
+                                                }
+                                            }
+                                        }
+                                    }
 
                                     DragHandler {
                                         id: dragHandler
