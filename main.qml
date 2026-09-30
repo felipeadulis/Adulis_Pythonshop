@@ -80,7 +80,7 @@ Window {
             spacing: 15
 
             ScrollView {
-                Layout.preferredWidth: 320
+                Layout.preferredWidth: 340
                 Layout.fillHeight: true
 
                 ColumnLayout {
@@ -259,10 +259,23 @@ Window {
                         onClicked: backend.applyContrastStretching()
                     }
 
-                    Button {
-                        text: "Equalização de Histograma"
+                    // --- EQUALIZAÇÃO COM OPÇÃO CLAHE ---
+                    RowLayout {
                         Layout.fillWidth: true
-                        onClicked: backend.applyHistogramEqualization()
+                        spacing: 5
+
+                        Button {
+                            text: "Equalização de Histograma"
+                            Layout.fillWidth: true
+                            onClicked: backend.applyHistogramEqualization(claheCheckbox.checked)
+                        }
+
+                        CheckBox {
+                            id: claheCheckbox
+                            text: "CLAHE"
+                            checked: true
+                            font.pixelSize: 11
+                        }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }

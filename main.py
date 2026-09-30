@@ -210,16 +210,29 @@ class AdulisBackend(QObject):
             self.current_image = np.uint8(stretched)
         self._updateImage(self.current_image)
 
-    @Slot()
-    def applyHistogramEqualization(self):
+    @Slot(bool)
+    def applyHistogramEqualization(self, use_clahe):
         if self.current_image is None: return
         img = self.current_image
-        if len(img.shape) == 2:
-            self.current_image = cv2.equalizeHist(img)
+
+        if use_clahe:
+            # Equalização CLAHE (Adaptativa com Limite de Contraste)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            if len(img.shape) == 2:
+                self.current_image = clahe.apply(img)
+            else:
+                ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+                ycrcb[:, :, 0] = clahe.apply(ycrcb[:, :, 0])
+                self.current_image = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
         else:
-            ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
-            ycrcb[:, :, 0] = cv2.equalizeHist(ycrcb[:, :, 0])
-            self.current_image = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+            # Equalização Global (Padrão, mais agressiva e causa ruído/posterização)
+            if len(img.shape) == 2:
+                self.current_image = cv2.equalizeHist(img)
+            else:
+                ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+                ycrcb[:, :, 0] = cv2.equalizeHist(ycrcb[:, :, 0])
+                self.current_image = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+
         self._updateImage(self.current_image)
 
     @Slot()
