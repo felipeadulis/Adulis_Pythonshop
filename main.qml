@@ -5,13 +5,14 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 
 Window {
-    width: 1000
+    width: 1200
     height: 800
     visible: true
     title: qsTr("Adulis Pythonshop")
 
     property int imgWidth: 800
     property int imgHeight: 600
+    property bool showHistogram: true
 
     function resetOthers(activeControl) {
         if (activeControl !== "brightness" && brightnessSlider.value !== 0) {
@@ -60,6 +61,15 @@ Window {
                 MenuItem { text: qsTr("Abrir..."); onTriggered: openDialog.open() }
                 MenuItem { text: qsTr("Salvar"); onTriggered: backend.saveDefault() }
                 MenuItem { text: qsTr("Salvar Como..."); onTriggered: saveAsDialog.open() }
+            }
+            Menu {
+                title: qsTr("Exibir")
+                MenuItem {
+                    text: qsTr("Histograma")
+                    checkable: true
+                    checked: showHistogram
+                    onTriggered: showHistogram = checked
+                }
             }
         }
 
@@ -247,6 +257,12 @@ Window {
                         text: "Alongamento de Contraste"
                         Layout.fillWidth: true
                         onClicked: backend.applyContrastStretching()
+                    }
+
+                    Button {
+                        text: "Equalização de Histograma"
+                        Layout.fillWidth: true
+                        onClicked: backend.applyHistogramEqualization()
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -491,18 +507,55 @@ Window {
                 }
             }
 
-            Rectangle {
+            // Bloco de visualização central (Imagens lado a lado)
+            RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: "#e0e0e0"
-                border.color: "#999999"
+                spacing: 10
 
-                Image {
-                    id: imageViewer
-                    anchors.fill: parent
-                    anchors.margins: 5
-                    fillMode: Image.PreserveAspectFit
-                    cache: false
+                // Visualizador da Imagem Principal
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: "#e0e0e0"
+                    border.color: "#999999"
+
+                    Image {
+                        id: imageViewer
+                        anchors.fill: parent
+                        anchors.margins: 5
+                        fillMode: Image.PreserveAspectFit
+                        cache: false
+                    }
+                }
+
+                // Visualizador do Histograma (Alternável)
+                Rectangle {
+                    visible: showHistogram
+                    Layout.preferredWidth: 350
+                    Layout.fillHeight: true
+                    color: "#f5f5f5"
+                    border.color: "#999999"
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 5
+
+                        Text {
+                            text: "<b>Histograma de Intensidades</b>"
+                            Layout.alignment: Qt.AlignHCenter
+                            font.pixelSize: 13
+                        }
+
+                        Image {
+                            id: histogramViewer
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            fillMode: Image.PreserveAspectFit
+                            cache: false
+                        }
+                    }
                 }
             }
         }
@@ -513,6 +566,10 @@ Window {
         function onImageChanged(imgUrl) {
             imageViewer.source = ""
             imageViewer.source = imgUrl
+        }
+        function onHistogramChanged(histUrl) {
+            histogramViewer.source = ""
+            histogramViewer.source = histUrl
         }
         function onDimensionsChanged(w, h) {
             imgWidth = w;

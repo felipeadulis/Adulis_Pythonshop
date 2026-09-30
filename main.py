@@ -10,6 +10,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 class AdulisBackend(QObject):
     imageChanged = Signal(str)
+    histogramChanged = Signal(str)
     errorOcurred = Signal(str)
     requestSaveAs = Signal()
     dimensionsChanged = Signal(int, int)
@@ -20,6 +21,7 @@ class AdulisBackend(QObject):
         self.current_image = None
         self.current_file_path = None
         self.temp_path = Path(__file__).resolve().parent / "temp_output.png"
+        self.temp_hist_path = Path(__file__).resolve().parent / "temp_hist.png"
 
     @Slot(str)
     def loadImage(self, file_url):
@@ -83,9 +85,40 @@ class AdulisBackend(QObject):
         h, w = img_to_show.shape[:2]
         self.dimensionsChanged.emit(w, h)
 
+        # Atualiza a imagem principal
         cv2.imwrite(str(self.temp_path), img_to_show)
         file_url = QUrl.fromLocalFile(str(self.temp_path)).toString()
         self.imageChanged.emit(f"{file_url}?t={int(time.time() * 1000)}")
+
+        # Atualiza o histograma
+        self._updateHistogram(img_to_show)
+
+    def _updateHistogram(self, img):
+        """ Gera o histograma via OpenCV (ultrarrápido para tempo real) """
+        h_hist, w_hist = 300, 400
+        hist_img = np.full((h_hist, w_hist, 3), 245, dtype=np.uint8)
+
+        if len(img.shape) == 2:
+            hist = cv2.calcHist([img], [0], None, [256], [0, 256])
+            cv2.normalize(hist, hist, 0, h_hist - 20, cv2.NORM_MINMAX)
+            for x in range(255):
+                cv2.line(hist_img, (int(x * w_hist / 256), h_hist - 10),
+                         (int(x * w_hist / 256), h_hist - 10 - int(hist[x])), (50, 50, 50), 2)
+        else:
+            colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)] # B, G, R
+            for i, col in enumerate(colors):
+                hist = cv2.calcHist([img], [i], None, [256], [0, 256])
+                cv2.normalize(hist, hist, 0, h_hist - 20, cv2.NORM_MINMAX)
+                for x in range(255):
+                    y1 = h_hist - 10 - int(hist[x])
+                    y2 = h_hist - 10 - int(hist[x+1])
+                    x1 = int(x * w_hist / 256)
+                    x2 = int((x+1) * w_hist / 256)
+                    cv2.line(hist_img, (x1, y1), (x2, y2), col, 2)
+
+        cv2.imwrite(str(self.temp_hist_path), hist_img)
+        hist_url = QUrl.fromLocalFile(str(self.temp_hist_path)).toString()
+        self.histogramChanged.emit(f"{hist_url}?t={int(time.time() * 1000)}")
 
     def _get_border_value(self, img):
         return (255, 255, 255) if len(img.shape) == 3 else 255
@@ -107,7 +140,6 @@ class AdulisBackend(QObject):
 
     @Slot(float, bool)
     def processContrast(self, factor, apply):
-        """Aplica o fator de contraste centralizado em 127.5"""
         if self.current_image is None: return
         img_float = self.current_image.astype(np.float32)
 
@@ -160,7 +192,6 @@ class AdulisBackend(QObject):
 
     @Slot()
     def applyContrastStretching(self):
-        """ Alongamento de Contraste """
         if self.current_image is None: return
         img = self.current_image
         if len(img.shape) == 2:
@@ -177,6 +208,18 @@ class AdulisBackend(QObject):
                 else:
                     stretched[:, :, i] = img[:, :, i]
             self.current_image = np.uint8(stretched)
+        self._updateImage(self.current_image)
+
+    @Slot()
+    def applyHistogramEqualization(self):
+        if self.current_image is None: return
+        img = self.current_image
+        if len(img.shape) == 2:
+            self.current_image = cv2.equalizeHist(img)
+        else:
+            ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+            ycrcb[:, :, 0] = cv2.equalizeHist(ycrcb[:, :, 0])
+            self.current_image = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
         self._updateImage(self.current_image)
 
     @Slot()
