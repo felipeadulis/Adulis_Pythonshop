@@ -159,6 +159,27 @@ class AdulisBackend(QObject):
     # ==========================================
 
     @Slot()
+    def applyContrastStretching(self):
+        """ Alongamento de Contraste """
+        if self.current_image is None: return
+        img = self.current_image
+        if len(img.shape) == 2:
+            f_min, f_max = img.min(), img.max()
+            if f_max > f_min:
+                stretched = ((img.astype(np.float32) - f_min) / (f_max - f_min)) * 255.0
+                self.current_image = np.uint8(stretched)
+        else:
+            stretched = np.zeros_like(img)
+            for i in range(3):
+                f_min, f_max = img[:, :, i].min(), img[:, :, i].max()
+                if f_max > f_min:
+                    stretched[:, :, i] = ((img[:, :, i].astype(np.float32) - f_min) / (f_max - f_min)) * 255.0
+                else:
+                    stretched[:, :, i] = img[:, :, i]
+            self.current_image = np.uint8(stretched)
+        self._updateImage(self.current_image)
+
+    @Slot()
     def applyGrayscale(self):
         if self.current_image is None: return
         img = self.current_image.copy()

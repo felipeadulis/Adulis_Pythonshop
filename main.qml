@@ -243,6 +243,12 @@ Window {
                         onClicked: backend.applyNegative()
                     }
 
+                    Button {
+                        text: "Alongamento de Contraste"
+                        Layout.fillWidth: true
+                        onClicked: backend.applyContrastStretching()
+                    }
+
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
                     Text { text: "<b>Transformações Geométricas</b>" }
 
