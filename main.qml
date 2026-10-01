@@ -166,7 +166,11 @@ Window {
                                     }
                                 }
                                 onValueChanged: {
+                                    // Efeito "Snappy" no ponto neutro (0)
                                     if (pressed && !resetPending) {
+                                        if (Math.abs(value) < 15 && value !== 0) {
+                                            value = 0
+                                        }
                                         let now = Date.now()
                                         if (now - lastUpdate > 60) {
                                             backend.processBrightness(Math.round(value), false)
@@ -239,7 +243,11 @@ Window {
                                     }
                                 }
                                 onValueChanged: {
+                                    // Efeito "Snappy" no ponto neutro (1.0)
                                     if (pressed && !resetPending) {
+                                        if (Math.abs(value - 1.0) < 0.15 && value !== 1.0) {
+                                            value = 1.0
+                                        }
                                         let now = Date.now()
                                         if (now - lastUpdate > 60) {
                                             backend.processContrast(value, false)
@@ -338,7 +346,11 @@ Window {
                                     }
                                 }
                                 onValueChanged: {
+                                    // Efeito "Snappy" no ponto neutro (0°)
                                     if (pressed && !resetPending) {
+                                        if (Math.abs(value) < 10 && value !== 0) {
+                                            value = 0
+                                        }
                                         let now = Date.now()
                                         if (now - lastUpdate > 60) {
                                             backend.processRotation(value, false)
@@ -462,10 +474,21 @@ Window {
                                         }
                                     }
 
-                                    onXChanged: throttleUpdate(); onYChanged: throttleUpdate()
+                                    onXChanged: throttleUpdate()
+                                    onYChanged: throttleUpdate()
+
                                     function throttleUpdate() {
                                         if (dragHandler.active) {
-                                            let now = Date.now(); if (now - lastUpdate > 60) { backend.processTranslation(Math.round(dx), Math.round(dy), false); lastUpdate = now }
+                                            // Efeito "Snappy" no centro do Joystick
+                                            if (Math.abs(x - 60) < 10 && Math.abs(y - 60) < 10 && (x !== 60 || y !== 60)) {
+                                                x = 60
+                                                y = 60
+                                            }
+                                            let now = Date.now()
+                                            if (now - lastUpdate > 60) {
+                                                backend.processTranslation(Math.round(dx), Math.round(dy), false)
+                                                lastUpdate = now
+                                            }
                                         }
                                     }
                                 }
@@ -521,10 +544,43 @@ Window {
                                 snapMode: Slider.SnapAlways
 
                                 property real lastUpdate: 0
-                                onPressedChanged: { if (pressed) resetOthers("mean"); else backend.processMeanFilter(Math.round(value), false) }
-                                onValueChanged: {
+                                property real clickTime: 0
+                                property bool resetPending: false
+
+                                Timer {
+                                    id: meanResetTimer
+                                    interval: 50
+                                    onTriggered: {
+                                        meanSlider.value = 1
+                                        backend.processMeanFilter(1, false)
+                                        meanSlider.resetPending = false
+                                    }
+                                }
+
+                                onPressedChanged: {
                                     if (pressed) {
-                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processMeanFilter(Math.round(value), false); lastUpdate = now }
+                                        let now = Date.now()
+                                        if (now - clickTime < 300) {
+                                            resetPending = true
+                                        } else {
+                                            resetOthers("mean")
+                                        }
+                                        clickTime = now
+                                    } else {
+                                        if (resetPending) {
+                                            meanResetTimer.start()
+                                        } else {
+                                            backend.processMeanFilter(Math.round(value), false)
+                                        }
+                                    }
+                                }
+                                onValueChanged: {
+                                    if (pressed && !resetPending) {
+                                        let now = Date.now()
+                                        if (now - lastUpdate > 60) {
+                                            backend.processMeanFilter(Math.round(value), false)
+                                            lastUpdate = now
+                                        }
                                     }
                                 }
                             }
@@ -565,10 +621,44 @@ Window {
                                 snapMode: Slider.SnapAlways
 
                                 property real lastUpdate: 0
-                                onPressedChanged: { if (pressed) resetOthers("gauss"); else backend.processGaussianFilter(Math.round(value), gaussSigmaSpin.realValue, false) }
-                                onValueChanged: {
+                                property real clickTime: 0
+                                property bool resetPending: false
+
+                                Timer {
+                                    id: gaussResetTimer
+                                    interval: 50
+                                    onTriggered: {
+                                        gaussKernelSlider.value = 1
+                                        gaussSigmaSpin.value = 15
+                                        backend.processGaussianFilter(1, 0, false)
+                                        gaussKernelSlider.resetPending = false
+                                    }
+                                }
+
+                                onPressedChanged: {
                                     if (pressed) {
-                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processGaussianFilter(Math.round(value), gaussSigmaSpin.realValue, false); lastUpdate = now }
+                                        let now = Date.now()
+                                        if (now - clickTime < 300) {
+                                            resetPending = true
+                                        } else {
+                                            resetOthers("gauss")
+                                        }
+                                        clickTime = now
+                                    } else {
+                                        if (resetPending) {
+                                            gaussResetTimer.start()
+                                        } else {
+                                            backend.processGaussianFilter(Math.round(value), gaussSigmaSpin.realValue, false)
+                                        }
+                                    }
+                                }
+                                onValueChanged: {
+                                    if (pressed && !resetPending) {
+                                        let now = Date.now()
+                                        if (now - lastUpdate > 60) {
+                                            backend.processGaussianFilter(Math.round(value), gaussSigmaSpin.realValue, false)
+                                            lastUpdate = now
+                                        }
                                     }
                                 }
                             }
