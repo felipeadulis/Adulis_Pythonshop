@@ -67,10 +67,13 @@ class AdulisBackend(QObject):
         if not path:
             path = file_url.replace("file:///", "").replace("file://", "")
 
-        stream = open(path, "rb")
-        bytes_array = bytearray(stream.read())
-        numpy_array = np.asarray(bytes_array, dtype=np.uint8)
-        img = cv2.imdecode(numpy_array, cv2.IMREAD_UNCHANGED)
+        try:
+            stream = open(path, "rb")
+            bytes_array = bytearray(stream.read())
+            numpy_array = np.asarray(bytes_array, dtype=np.uint8)
+            img = cv2.imdecode(numpy_array, cv2.IMREAD_UNCHANGED)
+        except Exception:
+            img = None
 
         if img is None:
             self.errorOcurred.emit("Falha ao carregar a imagem. Verifique o caminho ou formato.")
@@ -89,7 +92,7 @@ class AdulisBackend(QObject):
     @Slot()
     def requestSaveAsDialog(self):
         if self.current_image is None:
-            self.errorOcurred.emit("Nenhuma imagem ativa para salvar.")
+            self.errorOcurred.emit("Abra uma imagem antes de salvar.")
             return
 
         suggested_url = ""
@@ -104,7 +107,9 @@ class AdulisBackend(QObject):
 
     @Slot(str)
     def saveImage(self, file_url):
-        if self.current_image is None: return
+        if self.current_image is None:
+            self.errorOcurred.emit("Abra uma imagem antes de salvar.")
+            return
 
         path = QUrl(file_url).toLocalFile()
         if not path:
@@ -121,6 +126,7 @@ class AdulisBackend(QObject):
     @Slot()
     def saveDefault(self):
         if self.current_image is None:
+            self.errorOcurred.emit("Abra uma imagem antes de salvar.")
             return
 
         if self.current_save_path is None:

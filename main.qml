@@ -13,8 +13,24 @@ Window {
     property int imgWidth: 800
     property int imgHeight: 600
     property bool showHistogram: true
+    property bool hasImage: false
+
+    // --- ATALHOS DE TECLADO GLOBAIS ---
+    Shortcut {
+        sequence: "Ctrl+O"
+        onActivated: openDialog.open()
+    }
+    Shortcut {
+        sequence: "Ctrl+S"
+        onActivated: backend.saveDefault()
+    }
+    Shortcut {
+        sequence: "Ctrl+Shift+S"
+        onActivated: backend.requestSaveAsDialog()
+    }
 
     function resetOthers(activeControl) {
+        if (!hasImage) return
         if (activeControl !== "brightness" && brightnessSlider.value !== 0) {
             brightnessSlider.value = 0
             backend.processBrightness(0, false)
@@ -61,6 +77,21 @@ Window {
         onAccepted: backend.saveImage(selectedFile.toString())
     }
 
+    Dialog {
+        id: warningDialog
+        title: "Aviso"
+        modal: true
+        standardButtons: Dialog.Ok
+        anchors.centerIn: parent
+        property alias text: warningText.text
+
+        Text {
+            id: warningText
+            text: ""
+            font.pixelSize: 13
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -69,9 +100,9 @@ Window {
             Layout.fillWidth: true
             Menu {
                 title: qsTr("Arquivo")
-                MenuItem { text: qsTr("Abrir..."); onTriggered: openDialog.open() }
-                MenuItem { text: qsTr("Salvar"); onTriggered: backend.saveDefault() }
-                MenuItem { text: qsTr("Salvar Como..."); onTriggered: backend.requestSaveAsDialog() }
+                MenuItem { text: qsTr("Abrir... (Ctrl+O)"); onTriggered: openDialog.open() }
+                MenuItem { text: qsTr("Salvar (Ctrl+S)"); onTriggered: backend.saveDefault() }
+                MenuItem { text: qsTr("Salvar Como... (Ctrl+Shift+S)"); onTriggered: backend.requestSaveAsDialog() }
             }
             Menu {
                 title: qsTr("Exibir")
@@ -98,9 +129,30 @@ Window {
                     width: parent.width - 15
                     spacing: 10
 
+                    // --- SUBMENU DE ATALHOS DE SALVAR/RESET ---
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 5
+
+                        Button {
+                            text: "Salvar Imagem"
+                            Layout.fillWidth: true
+                            enabled: hasImage
+                            onClicked: backend.saveDefault()
+                        }
+
+                        Button {
+                            text: "Salvar Como"
+                            Layout.fillWidth: true
+                            enabled: hasImage
+                            onClicked: backend.requestSaveAsDialog()
+                        }
+                    }
+
                     Button {
                         text: "Resetar Imagem à Original"
                         Layout.fillWidth: true
+                        enabled: hasImage
                         palette.buttonText: "#d9534f"
                         onClicked: {
                             resetOthers("all")
@@ -114,6 +166,7 @@ Window {
                     Button {
                         text: "Escala de Cinza"
                         Layout.fillWidth: true
+                        enabled: hasImage
                         onClicked: { resetOthers("grayscale"); backend.applyGrayscale() }
                     }
 
@@ -125,7 +178,7 @@ Window {
 
                         Text {
                             text: "Ajuste de Brilho: " + Math.round(brightnessSlider.value)
-                            font.pixelSize: 12; color: "#333"
+                            font.pixelSize: 12; color: hasImage ? "#333" : "#888"
                         }
 
                         RowLayout {
@@ -133,6 +186,7 @@ Window {
                             Slider {
                                 id: brightnessSlider
                                 Layout.fillWidth: true
+                                enabled: hasImage
                                 from: -255; to: 255; value: 0; stepSize: 1
                                 property real lastUpdate: 0
                                 property real clickTime: 0
@@ -161,16 +215,14 @@ Window {
                                         if (resetPending) {
                                             brightResetTimer.start()
                                         } else {
+                                            if (Math.abs(value) < 12) value = 0
                                             backend.processBrightness(Math.round(value), false)
                                         }
                                     }
                                 }
                                 onValueChanged: {
-                                    // Efeito "Snappy" no ponto neutro (0)
                                     if (pressed && !resetPending) {
-                                        if (Math.abs(value) < 15 && value !== 0) {
-                                            value = 0
-                                        }
+                                        if (Math.abs(value) < 5 && value !== 0) value = 0
                                         let now = Date.now()
                                         if (now - lastUpdate > 60) {
                                             backend.processBrightness(Math.round(value), false)
@@ -182,13 +234,13 @@ Window {
 
                             Button {
                                 text: "Reset"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { brightnessSlider.value = 0; backend.processBrightness(0, false) }
                             }
 
                             Button {
                                 text: "Aplicar"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { backend.processBrightness(Math.round(brightnessSlider.value), true); brightnessSlider.value = 0 }
                             }
                         }
@@ -202,7 +254,7 @@ Window {
 
                         Text {
                             text: "Fator de Contraste: " + contrastSlider.value.toFixed(1) + "x"
-                            font.pixelSize: 12; color: "#333"
+                            font.pixelSize: 12; color: hasImage ? "#333" : "#888"
                         }
 
                         RowLayout {
@@ -210,6 +262,7 @@ Window {
                             Slider {
                                 id: contrastSlider
                                 Layout.fillWidth: true
+                                enabled: hasImage
                                 from: 0.0; to: 3.0; value: 1.0; stepSize: 0.1
                                 property real lastUpdate: 0
                                 property real clickTime: 0
@@ -238,16 +291,14 @@ Window {
                                         if (resetPending) {
                                             contResetTimer.start()
                                         } else {
+                                            if (Math.abs(value - 1.0) < 0.12) value = 1.0
                                             backend.processContrast(value, false)
                                         }
                                     }
                                 }
                                 onValueChanged: {
-                                    // Efeito "Snappy" no ponto neutro (1.0)
                                     if (pressed && !resetPending) {
-                                        if (Math.abs(value - 1.0) < 0.15 && value !== 1.0) {
-                                            value = 1.0
-                                        }
+                                        if (Math.abs(value - 1.0) < 0.05 && value !== 1.0) value = 1.0
                                         let now = Date.now()
                                         if (now - lastUpdate > 60) {
                                             backend.processContrast(value, false)
@@ -259,13 +310,13 @@ Window {
 
                             Button {
                                 text: "Reset"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { contrastSlider.value = 1.0; backend.processContrast(1.0, false) }
                             }
 
                             Button {
                                 text: "Aplicar"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { backend.processContrast(contrastSlider.value, true); contrastSlider.value = 1.0 }
                             }
                         }
@@ -274,12 +325,14 @@ Window {
                     Button {
                         text: "Negativo da Imagem"
                         Layout.fillWidth: true
+                        enabled: hasImage
                         onClicked: { resetOthers("negative"); backend.applyNegative() }
                     }
 
                     Button {
                         text: "Alongamento de Contraste"
                         Layout.fillWidth: true
+                        enabled: hasImage
                         onClicked: { resetOthers("stretching"); backend.applyContrastStretching() }
                     }
 
@@ -289,9 +342,10 @@ Window {
                         Button {
                             text: "Equalização de Histograma"
                             Layout.fillWidth: true
+                            enabled: hasImage
                             onClicked: { resetOthers("equalization"); backend.applyHistogramEqualization(claheCheckbox.checked) }
                         }
-                        CheckBox { id: claheCheckbox; text: "CLAHE"; checked: true; font.pixelSize: 11 }
+                        CheckBox { id: claheCheckbox; text: "CLAHE"; checked: true; font.pixelSize: 11; enabled: hasImage }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -305,7 +359,7 @@ Window {
 
                         Text {
                             text: "Rotação: " + Math.round(rotationSlider.value) + "°"
-                            font.pixelSize: 12; color: "#333"
+                            font.pixelSize: 12; color: hasImage ? "#333" : "#888"
                         }
 
                         RowLayout {
@@ -313,6 +367,7 @@ Window {
                             Slider {
                                 id: rotationSlider
                                 Layout.fillWidth: true
+                                enabled: hasImage
                                 from: -180; to: 180; value: 0; stepSize: 1
                                 property real lastUpdate: 0
                                 property real clickTime: 0
@@ -341,16 +396,14 @@ Window {
                                         if (resetPending) {
                                             rotResetTimer.start()
                                         } else {
+                                            if (Math.abs(value) < 8) value = 0
                                             backend.processRotation(value, false)
                                         }
                                     }
                                 }
                                 onValueChanged: {
-                                    // Efeito "Snappy" no ponto neutro (0°)
                                     if (pressed && !resetPending) {
-                                        if (Math.abs(value) < 10 && value !== 0) {
-                                            value = 0
-                                        }
+                                        if (Math.abs(value) < 4 && value !== 0) value = 0
                                         let now = Date.now()
                                         if (now - lastUpdate > 60) {
                                             backend.processRotation(value, false)
@@ -362,13 +415,13 @@ Window {
 
                             Button {
                                 text: "Reset"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { rotationSlider.value = 0; backend.processRotation(0, false) }
                             }
 
                             Button {
                                 text: "Aplicar"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { backend.processRotation(rotationSlider.value, true); rotationSlider.value = 0 }
                             }
                         }
@@ -382,7 +435,7 @@ Window {
 
                         Text {
                             text: "Translação X: " + Math.round(joystickHandle.dx) + "px | Y: " + Math.round(joystickHandle.dy) + "px"
-                            font.pixelSize: 12; color: "#333"
+                            font.pixelSize: 12; color: hasImage ? "#333" : "#888"
                         }
 
                         RowLayout {
@@ -392,6 +445,7 @@ Window {
                             Rectangle {
                                 id: joystickPad
                                 width: 140; height: 140; color: "#f0f0f0"; border.color: "#888888"; border.width: 1
+                                enabled: hasImage
 
                                 property real globalClickTime: 0
 
@@ -409,9 +463,11 @@ Window {
 
                                 MouseArea {
                                     anchors.fill: parent
+                                    enabled: hasImage
                                     property bool resetPending: false
 
                                     onPressed: (mouse) => {
+                                        if (!hasImage) return
                                         let now = Date.now()
                                         if (now - joystickPad.globalClickTime < 300) {
                                             resetPending = true
@@ -438,12 +494,13 @@ Window {
 
                                 Rectangle {
                                     id: joystickHandle
-                                    width: 20; height: 20; radius: 10; color: "#007acc"; x: 60; y: 60
+                                    width: 20; height: 20; radius: 10; color: hasImage ? "#007acc" : "#aaaaaa"; x: 60; y: 60
                                     property real dx: ((x / 120) * 2 - 1) * imgWidth
                                     property real dy: ((y / 120) * 2 - 1) * imgHeight
                                     property real lastUpdate: 0
 
                                     TapHandler {
+                                        enabled: hasImage
                                         property bool resetPending: false
                                         onPressedChanged: {
                                             if (pressed) {
@@ -466,6 +523,7 @@ Window {
 
                                     DragHandler {
                                         id: dragHandler; target: joystickHandle
+                                        enabled: hasImage
                                         xAxis.minimum: 0; xAxis.maximum: joystickPad.width - joystickHandle.width
                                         yAxis.minimum: 0; yAxis.maximum: joystickPad.height - joystickHandle.height
                                         onActiveChanged: {
@@ -479,8 +537,7 @@ Window {
 
                                     function throttleUpdate() {
                                         if (dragHandler.active) {
-                                            // Efeito "Snappy" no centro do Joystick
-                                            if (Math.abs(x - 60) < 10 && Math.abs(y - 60) < 10 && (x !== 60 || y !== 60)) {
+                                            if (Math.abs(x - 60) < 5 && Math.abs(y - 60) < 5 && (x !== 60 || y !== 60)) {
                                                 x = 60
                                                 y = 60
                                             }
@@ -497,12 +554,12 @@ Window {
                             ColumnLayout {
                                 Button {
                                     text: "Reset"
-                                    enabled: parent.parent.parent.isChanged
+                                    enabled: hasImage && parent.parent.parent.isChanged
                                     onClicked: { centerJoystick(); backend.processTranslation(0, 0, false) }
                                 }
                                 Button {
                                     text: "Aplicar"
-                                    enabled: parent.parent.parent.isChanged
+                                    enabled: hasImage && parent.parent.parent.isChanged
                                     onClicked: {
                                         backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), true)
                                         centerJoystick()
@@ -515,8 +572,8 @@ Window {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 5
-                        Button { text: "Espelhar Horiz."; Layout.fillWidth: true; onClicked: { resetOthers("mirrorH"); backend.applyMirror(1) } }
-                        Button { text: "Espelhar Vert."; Layout.fillWidth: true; onClicked: { resetOthers("mirrorV"); backend.applyMirror(0) } }
+                        Button { text: "Espelhar Horiz."; Layout.fillWidth: true; enabled: hasImage; onClicked: { resetOthers("mirrorH"); backend.applyMirror(1) } }
+                        Button { text: "Espelhar Vert."; Layout.fillWidth: true; enabled: hasImage; onClicked: { resetOthers("mirrorV"); backend.applyMirror(0) } }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -530,7 +587,7 @@ Window {
 
                         Text {
                             text: parent.isChanged ? "Filtro da Média (Kernel: " + Math.round(meanSlider.value) + "x" + Math.round(meanSlider.value) + ")" : "Filtro da Média (Desativado)"
-                            font.pixelSize: 12; color: parent.isChanged ? "#333" : "#888"
+                            font.pixelSize: 12; color: (hasImage && parent.isChanged) ? "#333" : "#888"
                         }
 
                         RowLayout {
@@ -540,6 +597,7 @@ Window {
                             Slider {
                                 id: meanSlider
                                 Layout.fillWidth: true
+                                enabled: hasImage
                                 from: 1; to: 9; value: 1; stepSize: 2
                                 snapMode: Slider.SnapAlways
 
@@ -587,13 +645,13 @@ Window {
 
                             Button {
                                 text: "Reset"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { meanSlider.value = 1; backend.processMeanFilter(1, false) }
                             }
 
                             Button {
                                 text: "Aplicar"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { backend.processMeanFilter(Math.round(meanSlider.value), true); meanSlider.value = 1 }
                             }
                         }
@@ -607,7 +665,7 @@ Window {
 
                         Text {
                             text: parent.isChanged ? "Filtro Gaussiano (Kernel: " + Math.round(gaussKernelSlider.value) + "x" + Math.round(gaussKernelSlider.value) + " | σ: " + (gaussSigmaSpin.value / 10.0).toFixed(1) + ")" : "Filtro Gaussiano (Desativado)"
-                            font.pixelSize: 12; color: parent.isChanged ? "#333" : "#888"
+                            font.pixelSize: 12; color: (hasImage && parent.isChanged) ? "#333" : "#888"
                         }
 
                         RowLayout {
@@ -617,6 +675,7 @@ Window {
                             Slider {
                                 id: gaussKernelSlider
                                 Layout.fillWidth: true
+                                enabled: hasImage
                                 from: 1; to: 9; value: 1; stepSize: 2
                                 snapMode: Slider.SnapAlways
 
@@ -665,7 +724,7 @@ Window {
 
                             SpinBox {
                                 id: gaussSigmaSpin
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 from: 0; to: 100; value: 15; stepSize: 5
                                 Layout.preferredWidth: 80
 
@@ -682,13 +741,13 @@ Window {
 
                             Button {
                                 text: "Reset"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: { gaussKernelSlider.value = 1; gaussSigmaSpin.value = 15; backend.processGaussianFilter(1, 0, false) }
                             }
 
                             Button {
                                 text: "Aplicar"
-                                enabled: parent.parent.isChanged
+                                enabled: hasImage && parent.parent.isChanged
                                 onClicked: {
                                     backend.processGaussianFilter(Math.round(gaussKernelSlider.value), gaussSigmaSpin.realValue, true)
                                     gaussKernelSlider.value = 1
@@ -701,29 +760,72 @@ Window {
                     Button {
                         text: "Adicionar Ruído"
                         Layout.fillWidth: true
+                        enabled: hasImage
+                        palette.buttonText: hasImage ? "#000000" : "#888888"
                         onClicked: { resetOthers("noise"); backend.addNoise() }
                     }
                 }
             }
 
-            // Bloco de visualização central
+            // Bloco de visualização central (Imagens lado a lado)
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 10
 
+                // Container da imagem principal com botão central caso vazia
                 Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; color: "#e0e0e0"; border.color: "#999999"
-                    Image { id: imageViewer; anchors.fill: parent; anchors.margins: 5; fillMode: Image.PreserveAspectFit; cache: false }
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: "#e0e0e0"
+                    border.color: "#999999"
+
+                    Button {
+                        text: "Abrir Imagem"
+                        visible: !hasImage
+                        anchors.centerIn: parent
+                        font.pixelSize: 15
+                        font.bold: true
+                        onClicked: openDialog.open()
+                    }
+
+                    Image {
+                        id: imageViewer
+                        anchors.fill: parent
+                        anchors.margins: 5
+                        fillMode: Image.PreserveAspectFit
+                        cache: false
+                        visible: hasImage
+                    }
                 }
 
+                // Visualizador do Histograma (Proporção justa e compacta)
                 Rectangle {
                     visible: showHistogram
-                    Layout.preferredWidth: 350; Layout.fillHeight: true; color: "#f5f5f5"; border.color: "#999999"
+                    Layout.preferredWidth: 260
+                    Layout.fillHeight: true
+                    color: "#f5f5f5"
+                    border.color: "#999999"
+
                     ColumnLayout {
-                        anchors.fill: parent; anchors.margins: 10; spacing: 5
-                        Text { text: "<b>Histograma de Intensidades</b>"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 13 }
-                        Image { id: histogramViewer; Layout.fillWidth: true; Layout.fillHeight: true; fillMode: Image.PreserveAspectFit; cache: false }
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 5
+
+                        Text {
+                            text: "<b>Histograma de Intensidades</b>"
+                            Layout.alignment: Qt.AlignHCenter
+                            font.pixelSize: 13
+                        }
+
+                        Image {
+                            id: histogramViewer
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            fillMode: Image.PreserveAspectFit
+                            cache: false
+                            visible: hasImage
+                        }
                     }
                 }
             }
@@ -732,10 +834,26 @@ Window {
 
     Connections {
         target: backend
-        function onImageChanged(imgUrl) { imageViewer.source = ""; imageViewer.source = imgUrl }
-        function onHistogramChanged(histUrl) { histogramViewer.source = ""; histogramViewer.source = histUrl }
-        function onDimensionsChanged(w, h) { imgWidth = w; imgHeight = h; }
-        function onErrorOcurred(msg) { console.warn(msg) }
-        function onRequestSaveAs(suggestedUrl) { saveAsDialog.currentFile = suggestedUrl; saveAsDialog.open() }
+        function onImageChanged(imgUrl) {
+            hasImage = true
+            imageViewer.source = ""
+            imageViewer.source = imgUrl
+        }
+        function onHistogramChanged(histUrl) {
+            histogramViewer.source = ""
+            histogramViewer.source = histUrl
+        }
+        function onDimensionsChanged(w, h) {
+            imgWidth = w
+            imgHeight = h
+        }
+        function onErrorOcurred(msg) {
+            warningDialog.text = msg
+            warningDialog.open()
+        }
+        function onRequestSaveAs(suggestedUrl) {
+            saveAsDialog.currentFile = suggestedUrl
+            saveAsDialog.open()
+        }
     }
 }
