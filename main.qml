@@ -102,7 +102,10 @@ Window {
                         text: "Resetar Imagem à Original"
                         Layout.fillWidth: true
                         palette.buttonText: "#d9534f"
-                        onClicked: backend.resetImage()
+                        onClicked: {
+                            resetOthers("all")
+                            backend.resetImage()
+                        }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -111,7 +114,7 @@ Window {
                     Button {
                         text: "Escala de Cinza"
                         Layout.fillWidth: true
-                        onClicked: backend.applyGrayscale()
+                        onClicked: { resetOthers("grayscale"); backend.applyGrayscale() }
                     }
 
                     // --- AJUSTE DE BRILHO ---
@@ -132,10 +135,43 @@ Window {
                                 Layout.fillWidth: true
                                 from: -255; to: 255; value: 0; stepSize: 1
                                 property real lastUpdate: 0
-                                onPressedChanged: { if (pressed) resetOthers("brightness"); else backend.processBrightness(Math.round(value), false) }
-                                onValueChanged: {
+                                property real clickTime: 0
+                                property bool resetPending: false
+
+                                Timer {
+                                    id: brightResetTimer
+                                    interval: 50
+                                    onTriggered: {
+                                        brightnessSlider.value = 0
+                                        backend.processBrightness(0, false)
+                                        brightnessSlider.resetPending = false
+                                    }
+                                }
+
+                                onPressedChanged: {
                                     if (pressed) {
-                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processBrightness(Math.round(value), false); lastUpdate = now }
+                                        let now = Date.now()
+                                        if (now - clickTime < 300) {
+                                            resetPending = true
+                                        } else {
+                                            resetOthers("brightness")
+                                        }
+                                        clickTime = now
+                                    } else {
+                                        if (resetPending) {
+                                            brightResetTimer.start()
+                                        } else {
+                                            backend.processBrightness(Math.round(value), false)
+                                        }
+                                    }
+                                }
+                                onValueChanged: {
+                                    if (pressed && !resetPending) {
+                                        let now = Date.now()
+                                        if (now - lastUpdate > 60) {
+                                            backend.processBrightness(Math.round(value), false)
+                                            lastUpdate = now
+                                        }
                                     }
                                 }
                             }
@@ -172,10 +208,43 @@ Window {
                                 Layout.fillWidth: true
                                 from: 0.0; to: 3.0; value: 1.0; stepSize: 0.1
                                 property real lastUpdate: 0
-                                onPressedChanged: { if (pressed) resetOthers("contrast"); else backend.processContrast(value, false) }
-                                onValueChanged: {
+                                property real clickTime: 0
+                                property bool resetPending: false
+
+                                Timer {
+                                    id: contResetTimer
+                                    interval: 50
+                                    onTriggered: {
+                                        contrastSlider.value = 1.0
+                                        backend.processContrast(1.0, false)
+                                        contrastSlider.resetPending = false
+                                    }
+                                }
+
+                                onPressedChanged: {
                                     if (pressed) {
-                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processContrast(value, false); lastUpdate = now }
+                                        let now = Date.now()
+                                        if (now - clickTime < 300) {
+                                            resetPending = true
+                                        } else {
+                                            resetOthers("contrast")
+                                        }
+                                        clickTime = now
+                                    } else {
+                                        if (resetPending) {
+                                            contResetTimer.start()
+                                        } else {
+                                            backend.processContrast(value, false)
+                                        }
+                                    }
+                                }
+                                onValueChanged: {
+                                    if (pressed && !resetPending) {
+                                        let now = Date.now()
+                                        if (now - lastUpdate > 60) {
+                                            backend.processContrast(value, false)
+                                            lastUpdate = now
+                                        }
                                     }
                                 }
                             }
@@ -197,13 +266,13 @@ Window {
                     Button {
                         text: "Negativo da Imagem"
                         Layout.fillWidth: true
-                        onClicked: backend.applyNegative()
+                        onClicked: { resetOthers("negative"); backend.applyNegative() }
                     }
 
                     Button {
                         text: "Alongamento de Contraste"
                         Layout.fillWidth: true
-                        onClicked: backend.applyContrastStretching()
+                        onClicked: { resetOthers("stretching"); backend.applyContrastStretching() }
                     }
 
                     RowLayout {
@@ -212,7 +281,7 @@ Window {
                         Button {
                             text: "Equalização de Histograma"
                             Layout.fillWidth: true
-                            onClicked: backend.applyHistogramEqualization(claheCheckbox.checked)
+                            onClicked: { resetOthers("equalization"); backend.applyHistogramEqualization(claheCheckbox.checked) }
                         }
                         CheckBox { id: claheCheckbox; text: "CLAHE"; checked: true; font.pixelSize: 11 }
                     }
@@ -238,10 +307,43 @@ Window {
                                 Layout.fillWidth: true
                                 from: -180; to: 180; value: 0; stepSize: 1
                                 property real lastUpdate: 0
-                                onPressedChanged: { if (pressed) resetOthers("rotation"); else backend.processRotation(value, false) }
-                                onValueChanged: {
+                                property real clickTime: 0
+                                property bool resetPending: false
+
+                                Timer {
+                                    id: rotResetTimer
+                                    interval: 50
+                                    onTriggered: {
+                                        rotationSlider.value = 0
+                                        backend.processRotation(0, false)
+                                        rotationSlider.resetPending = false
+                                    }
+                                }
+
+                                onPressedChanged: {
                                     if (pressed) {
-                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processRotation(value, false); lastUpdate = now }
+                                        let now = Date.now()
+                                        if (now - clickTime < 300) {
+                                            resetPending = true
+                                        } else {
+                                            resetOthers("rotation")
+                                        }
+                                        clickTime = now
+                                    } else {
+                                        if (resetPending) {
+                                            rotResetTimer.start()
+                                        } else {
+                                            backend.processRotation(value, false)
+                                        }
+                                    }
+                                }
+                                onValueChanged: {
+                                    if (pressed && !resetPending) {
+                                        let now = Date.now()
+                                        if (now - lastUpdate > 60) {
+                                            backend.processRotation(value, false)
+                                            lastUpdate = now
+                                        }
                                     }
                                 }
                             }
@@ -279,17 +381,46 @@ Window {
                                 id: joystickPad
                                 width: 140; height: 140; color: "#f0f0f0"; border.color: "#888888"; border.width: 1
 
+                                property real globalClickTime: 0
+
                                 Rectangle { width: parent.width; height: 1; color: "#dddddd"; anchors.centerIn: parent }
                                 Rectangle { width: 1; height: parent.height; color: "#dddddd"; anchors.centerIn: parent }
 
+                                Timer {
+                                    id: joyGlobalResetTimer
+                                    interval: 10
+                                    onTriggered: {
+                                        centerJoystick()
+                                        backend.processTranslation(0, 0, false)
+                                    }
+                                }
+
                                 MouseArea {
                                     anchors.fill: parent
+                                    property bool resetPending: false
+
                                     onPressed: (mouse) => {
-                                        resetOthers("joystick")
-                                        let maxTravel = joystickPad.width - joystickHandle.width
-                                        joystickHandle.x = Math.max(0, Math.min(mouse.x - joystickHandle.width / 2, maxTravel))
-                                        joystickHandle.y = Math.max(0, Math.min(mouse.y - joystickHandle.height / 2, maxTravel))
-                                        backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
+                                        let now = Date.now()
+                                        if (now - joystickPad.globalClickTime < 300) {
+                                            resetPending = true
+                                            joystickPad.globalClickTime = 0
+                                        } else {
+                                            joystickPad.globalClickTime = now
+                                            resetOthers("joystick")
+                                            let maxTravel = joystickPad.width - joystickHandle.width
+                                            let nx = mouse.x - joystickHandle.width / 2
+                                            let ny = mouse.y - joystickHandle.height / 2
+
+                                            joystickHandle.x = Math.max(0, Math.min(nx, maxTravel))
+                                            joystickHandle.y = Math.max(0, Math.min(ny, maxTravel))
+                                            backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
+                                        }
+                                    }
+                                    onReleased: {
+                                        if (resetPending) {
+                                            joyGlobalResetTimer.start()
+                                            resetPending = false
+                                        }
                                     }
                                 }
 
@@ -300,13 +431,37 @@ Window {
                                     property real dy: ((y / 120) * 2 - 1) * imgHeight
                                     property real lastUpdate: 0
 
-                                    TapHandler { onPressedChanged: { if (pressed) resetOthers("joystick") } }
+                                    TapHandler {
+                                        property bool resetPending: false
+                                        onPressedChanged: {
+                                            if (pressed) {
+                                                let now = Date.now()
+                                                if (now - joystickPad.globalClickTime < 300) {
+                                                    resetPending = true
+                                                    joystickPad.globalClickTime = 0
+                                                } else {
+                                                    joystickPad.globalClickTime = now
+                                                    resetOthers("joystick")
+                                                }
+                                            } else {
+                                                if (resetPending) {
+                                                    joyGlobalResetTimer.start()
+                                                    resetPending = false
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     DragHandler {
                                         id: dragHandler; target: joystickHandle
                                         xAxis.minimum: 0; xAxis.maximum: joystickPad.width - joystickHandle.width
                                         yAxis.minimum: 0; yAxis.maximum: joystickPad.height - joystickHandle.height
-                                        onActiveChanged: { if (!active) backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false) }
+                                        onActiveChanged: {
+                                            if (active) resetOthers("joystick")
+                                            else backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
+                                        }
                                     }
+
                                     onXChanged: throttleUpdate(); onYChanged: throttleUpdate()
                                     function throttleUpdate() {
                                         if (dragHandler.active) {
@@ -337,8 +492,8 @@ Window {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 5
-                        Button { text: "Espelhar Horiz."; Layout.fillWidth: true; onClicked: backend.applyMirror(1) }
-                        Button { text: "Espelhar Vert."; Layout.fillWidth: true; onClicked: backend.applyMirror(0) }
+                        Button { text: "Espelhar Horiz."; Layout.fillWidth: true; onClicked: { resetOthers("mirrorH"); backend.applyMirror(1) } }
+                        Button { text: "Espelhar Vert."; Layout.fillWidth: true; onClicked: { resetOthers("mirrorV"); backend.applyMirror(0) } }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -456,7 +611,7 @@ Window {
                     Button {
                         text: "Adicionar Ruído"
                         Layout.fillWidth: true
-                        onClicked: backend.addNoise()
+                        onClicked: { resetOthers("noise"); backend.addNoise() }
                     }
                 }
             }
