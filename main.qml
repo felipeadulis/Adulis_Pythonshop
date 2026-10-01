@@ -129,34 +129,26 @@ Window {
                     width: parent.width - 15
                     spacing: 10
 
-                    // --- SUBMENU DE ATALHOS DE SALVAR/RESET ---
+                    // --- BOTÕES DE SALVAR E RESET LADO A LADO ---
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 5
 
                         Button {
-                            text: "Salvar Imagem"
+                            text: "Salvar"
                             Layout.fillWidth: true
                             enabled: hasImage
                             onClicked: backend.saveDefault()
                         }
 
                         Button {
-                            text: "Salvar Como"
+                            text: "Resetar Imagem"
                             Layout.fillWidth: true
                             enabled: hasImage
-                            onClicked: backend.requestSaveAsDialog()
-                        }
-                    }
-
-                    Button {
-                        text: "Resetar Imagem à Original"
-                        Layout.fillWidth: true
-                        enabled: hasImage
-                        palette.buttonText: "#d9534f"
-                        onClicked: {
-                            resetOthers("all")
-                            backend.resetImage()
+                            onClicked: {
+                                resetOthers("all")
+                                backend.resetImage()
+                            }
                         }
                     }
 
@@ -761,19 +753,18 @@ Window {
                         text: "Adicionar Ruído"
                         Layout.fillWidth: true
                         enabled: hasImage
-                        palette.buttonText: hasImage ? "#000000" : "#888888"
                         onClicked: { resetOthers("noise"); backend.addNoise() }
                     }
                 }
             }
 
-            // Bloco de visualização central (Imagens lado a lado)
+            // Bloco de visualização central
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 10
 
-                // Container da imagem principal com botão central caso vazia
+                // Container da imagem principal (Ocupa o espaço restante)
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -786,6 +777,7 @@ Window {
                         anchors.centerIn: parent
                         font.pixelSize: 15
                         font.bold: true
+                        palette.buttonText: "#333333"
                         onClicked: openDialog.open()
                     }
 
@@ -799,10 +791,10 @@ Window {
                     }
                 }
 
-                // Visualizador do Histograma (Proporção justa e compacta)
+                // Visualizador do Histograma (Tamanho fixo amplo de 420px)
                 Rectangle {
-                    visible: showHistogram
-                    Layout.preferredWidth: 260
+                    visible: showHistogram && hasImage
+                    Layout.preferredWidth: 420
                     Layout.fillHeight: true
                     color: "#f5f5f5"
                     border.color: "#999999"
