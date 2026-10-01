@@ -17,16 +17,27 @@ Window {
     function resetOthers(activeControl) {
         if (activeControl !== "brightness" && brightnessSlider.value !== 0) {
             brightnessSlider.value = 0
+            backend.processBrightness(0, false)
         }
         if (activeControl !== "contrast" && contrastSlider.value !== 1.0) {
             contrastSlider.value = 1.0
+            backend.processContrast(1.0, false)
         }
         if (activeControl !== "rotation" && rotationSlider.value !== 0) {
             rotationSlider.value = 0
+            backend.processRotation(0, false)
         }
-        if (activeControl !== "joystick" && (joystickHandle.x !== 60 || joystickHandle.y !== 60)) {
+        if (activeControl !== "joystick" && (Math.round(joystickHandle.dx) !== 0 || Math.round(joystickHandle.dy) !== 0)) {
             centerJoystick()
             backend.processTranslation(0, 0, false)
+        }
+        if (activeControl !== "mean" && meanSlider.value !== 1) {
+            meanSlider.value = 1
+            backend.processMeanFilter(1, false)
+        }
+        if (activeControl !== "gauss" && gaussKernelSlider.value !== 1) {
+            gaussKernelSlider.value = 1
+            backend.processGaussianFilter(1, 0, false)
         }
     }
 
@@ -80,7 +91,7 @@ Window {
             spacing: 15
 
             ScrollView {
-                Layout.preferredWidth: 340
+                Layout.preferredWidth: 350
                 Layout.fillHeight: true
 
                 ColumnLayout {
@@ -88,7 +99,7 @@ Window {
                     spacing: 10
 
                     Button {
-                        text: "Resetar Imagem"
+                        text: "Resetar Imagem à Original"
                         Layout.fillWidth: true
                         palette.buttonText: "#d9534f"
                         onClicked: backend.resetImage()
@@ -107,11 +118,11 @@ Window {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
+                        property bool isChanged: brightnessSlider.value !== 0
 
                         Text {
                             text: "Ajuste de Brilho: " + Math.round(brightnessSlider.value)
-                            font.pixelSize: 12
-                            color: "#333"
+                            font.pixelSize: 12; color: "#333"
                         }
 
                         RowLayout {
@@ -119,58 +130,26 @@ Window {
                             Slider {
                                 id: brightnessSlider
                                 Layout.fillWidth: true
-                                from: -255
-                                to: 255
-                                value: 0
-                                stepSize: 1
-
+                                from: -255; to: 255; value: 0; stepSize: 1
                                 property real lastUpdate: 0
-                                property real clickTime: 0
-                                property bool resetPending: false
-
-                                Timer {
-                                    id: brightResetTimer
-                                    interval: 50
-                                    onTriggered: {
-                                        brightnessSlider.value = 0
-                                        backend.processBrightness(0, false)
-                                        brightnessSlider.resetPending = false
-                                    }
-                                }
-
-                                onPressedChanged: {
-                                    if (pressed) {
-                                        let now = Date.now()
-                                        if (now - clickTime < 300) {
-                                            resetPending = true
-                                        } else {
-                                            resetOthers("brightness")
-                                        }
-                                        clickTime = now
-                                    } else {
-                                        if (resetPending) {
-                                            brightResetTimer.start()
-                                        } else {
-                                            backend.processBrightness(Math.round(value), false)
-                                        }
-                                    }
-                                }
+                                onPressedChanged: { if (pressed) resetOthers("brightness"); else backend.processBrightness(Math.round(value), false) }
                                 onValueChanged: {
-                                    if (pressed && !resetPending) {
-                                        let now = Date.now()
-                                        if (now - lastUpdate > 60) {
-                                            backend.processBrightness(Math.round(value), false)
-                                            lastUpdate = now
-                                        }
+                                    if (pressed) {
+                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processBrightness(Math.round(value), false); lastUpdate = now }
                                     }
                                 }
                             }
+
+                            Button {
+                                text: "Reset"
+                                enabled: parent.parent.isChanged
+                                onClicked: { brightnessSlider.value = 0; backend.processBrightness(0, false) }
+                            }
+
                             Button {
                                 text: "Aplicar"
-                                onClicked: {
-                                    backend.processBrightness(Math.round(brightnessSlider.value), true)
-                                    brightnessSlider.value = 0
-                                }
+                                enabled: parent.parent.isChanged
+                                onClicked: { backend.processBrightness(Math.round(brightnessSlider.value), true); brightnessSlider.value = 0 }
                             }
                         }
                     }
@@ -179,11 +158,11 @@ Window {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
+                        property bool isChanged: contrastSlider.value !== 1.0
 
                         Text {
                             text: "Fator de Contraste: " + contrastSlider.value.toFixed(1) + "x"
-                            font.pixelSize: 12
-                            color: "#333"
+                            font.pixelSize: 12; color: "#333"
                         }
 
                         RowLayout {
@@ -191,58 +170,26 @@ Window {
                             Slider {
                                 id: contrastSlider
                                 Layout.fillWidth: true
-                                from: 0.0
-                                to: 3.0
-                                value: 1.0
-                                stepSize: 0.1
-
+                                from: 0.0; to: 3.0; value: 1.0; stepSize: 0.1
                                 property real lastUpdate: 0
-                                property real clickTime: 0
-                                property bool resetPending: false
-
-                                Timer {
-                                    id: contResetTimer
-                                    interval: 50
-                                    onTriggered: {
-                                        contrastSlider.value = 1.0
-                                        backend.processContrast(1.0, false)
-                                        contrastSlider.resetPending = false
-                                    }
-                                }
-
-                                onPressedChanged: {
-                                    if (pressed) {
-                                        let now = Date.now()
-                                        if (now - clickTime < 300) {
-                                            resetPending = true
-                                        } else {
-                                            resetOthers("contrast")
-                                        }
-                                        clickTime = now
-                                    } else {
-                                        if (resetPending) {
-                                            contResetTimer.start()
-                                        } else {
-                                            backend.processContrast(value, false)
-                                        }
-                                    }
-                                }
+                                onPressedChanged: { if (pressed) resetOthers("contrast"); else backend.processContrast(value, false) }
                                 onValueChanged: {
-                                    if (pressed && !resetPending) {
-                                        let now = Date.now()
-                                        if (now - lastUpdate > 60) {
-                                            backend.processContrast(value, false)
-                                            lastUpdate = now
-                                        }
+                                    if (pressed) {
+                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processContrast(value, false); lastUpdate = now }
                                     }
                                 }
                             }
+
+                            Button {
+                                text: "Reset"
+                                enabled: parent.parent.isChanged
+                                onClicked: { contrastSlider.value = 1.0; backend.processContrast(1.0, false) }
+                            }
+
                             Button {
                                 text: "Aplicar"
-                                onClicked: {
-                                    backend.processContrast(contrastSlider.value, true)
-                                    contrastSlider.value = 1.0
-                                }
+                                enabled: parent.parent.isChanged
+                                onClicked: { backend.processContrast(contrastSlider.value, true); contrastSlider.value = 1.0 }
                             }
                         }
                     }
@@ -259,23 +206,15 @@ Window {
                         onClicked: backend.applyContrastStretching()
                     }
 
-                    // --- EQUALIZAÇÃO COM OPÇÃO CLAHE ---
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 5
-
                         Button {
                             text: "Equalização de Histograma"
                             Layout.fillWidth: true
                             onClicked: backend.applyHistogramEqualization(claheCheckbox.checked)
                         }
-
-                        CheckBox {
-                            id: claheCheckbox
-                            text: "CLAHE"
-                            checked: true
-                            font.pixelSize: 11
-                        }
+                        CheckBox { id: claheCheckbox; text: "CLAHE"; checked: true; font.pixelSize: 11 }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -285,11 +224,11 @@ Window {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
+                        property bool isChanged: rotationSlider.value !== 0
 
                         Text {
                             text: "Rotação: " + Math.round(rotationSlider.value) + "°"
-                            font.pixelSize: 12
-                            color: "#333"
+                            font.pixelSize: 12; color: "#333"
                         }
 
                         RowLayout {
@@ -297,71 +236,39 @@ Window {
                             Slider {
                                 id: rotationSlider
                                 Layout.fillWidth: true
-                                from: -180
-                                to: 180
-                                value: 0
-                                stepSize: 1
-
+                                from: -180; to: 180; value: 0; stepSize: 1
                                 property real lastUpdate: 0
-                                property real clickTime: 0
-                                property bool resetPending: false
-
-                                Timer {
-                                    id: rotResetTimer
-                                    interval: 50
-                                    onTriggered: {
-                                        rotationSlider.value = 0
-                                        backend.processRotation(0, false)
-                                        rotationSlider.resetPending = false
-                                    }
-                                }
-
-                                onPressedChanged: {
-                                    if (pressed) {
-                                        let now = Date.now()
-                                        if (now - clickTime < 300) {
-                                            resetPending = true
-                                        } else {
-                                            resetOthers("rotation")
-                                        }
-                                        clickTime = now
-                                    } else {
-                                        if (resetPending) {
-                                            rotResetTimer.start()
-                                        } else {
-                                            backend.processRotation(value, false)
-                                        }
-                                    }
-                                }
+                                onPressedChanged: { if (pressed) resetOthers("rotation"); else backend.processRotation(value, false) }
                                 onValueChanged: {
-                                    if (pressed && !resetPending) {
-                                        let now = Date.now()
-                                        if (now - lastUpdate > 60) {
-                                            backend.processRotation(value, false)
-                                            lastUpdate = now
-                                        }
+                                    if (pressed) {
+                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processRotation(value, false); lastUpdate = now }
                                     }
                                 }
                             }
+
+                            Button {
+                                text: "Reset"
+                                enabled: parent.parent.isChanged
+                                onClicked: { rotationSlider.value = 0; backend.processRotation(0, false) }
+                            }
+
                             Button {
                                 text: "Aplicar"
-                                onClicked: {
-                                    backend.processRotation(rotationSlider.value, true)
-                                    rotationSlider.value = 0
-                                }
+                                enabled: parent.parent.isChanged
+                                onClicked: { backend.processRotation(rotationSlider.value, true); rotationSlider.value = 0 }
                             }
                         }
                     }
 
-                    // --- TRANSLAÇÃO ---
+                    // --- TRANSLAÇÃO (JOYSTICK) ---
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
+                        property bool isChanged: Math.round(joystickHandle.dx) !== 0 || Math.round(joystickHandle.dy) !== 0
 
                         Text {
                             text: "Translação X: " + Math.round(joystickHandle.dx) + "px | Y: " + Math.round(joystickHandle.dy) + "px"
-                            font.pixelSize: 12
-                            color: "#333"
+                            font.pixelSize: 12; color: "#333"
                         }
 
                         RowLayout {
@@ -370,145 +277,68 @@ Window {
 
                             Rectangle {
                                 id: joystickPad
-                                width: 140
-                                height: 140
-                                color: "#f0f0f0"
-                                border.color: "#888888"
-                                border.width: 1
-
-                                property real globalClickTime: 0
+                                width: 140; height: 140; color: "#f0f0f0"; border.color: "#888888"; border.width: 1
 
                                 Rectangle { width: parent.width; height: 1; color: "#dddddd"; anchors.centerIn: parent }
                                 Rectangle { width: 1; height: parent.height; color: "#dddddd"; anchors.centerIn: parent }
 
-                                Timer {
-                                    id: joyGlobalResetTimer
-                                    interval: 10
-                                    onTriggered: {
-                                        centerJoystick()
-                                        backend.processTranslation(0, 0, false)
-                                    }
-                                }
-
                                 MouseArea {
                                     anchors.fill: parent
-                                    property bool resetPending: false
-
                                     onPressed: (mouse) => {
-                                        let now = Date.now()
-                                        if (now - joystickPad.globalClickTime < 300) {
-                                            resetPending = true
-                                            joystickPad.globalClickTime = 0
-                                        } else {
-                                            joystickPad.globalClickTime = now
-                                            resetOthers("joystick")
-                                            let maxTravel = joystickPad.width - joystickHandle.width
-                                            let nx = mouse.x - joystickHandle.width / 2
-                                            let ny = mouse.y - joystickHandle.height / 2
-
-                                            joystickHandle.x = Math.max(0, Math.min(nx, maxTravel))
-                                            joystickHandle.y = Math.max(0, Math.min(ny, maxTravel))
-                                            backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
-                                        }
-                                    }
-                                    onReleased: {
-                                        if (resetPending) {
-                                            joyGlobalResetTimer.start()
-                                            resetPending = false
-                                        }
+                                        resetOthers("joystick")
+                                        let maxTravel = joystickPad.width - joystickHandle.width
+                                        joystickHandle.x = Math.max(0, Math.min(mouse.x - joystickHandle.width / 2, maxTravel))
+                                        joystickHandle.y = Math.max(0, Math.min(mouse.y - joystickHandle.height / 2, maxTravel))
+                                        backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
                                     }
                                 }
 
                                 Rectangle {
                                     id: joystickHandle
-                                    width: 20
-                                    height: 20
-                                    radius: 10
-                                    color: "#007acc"
-                                    x: 60
-                                    y: 60
-
+                                    width: 20; height: 20; radius: 10; color: "#007acc"; x: 60; y: 60
                                     property real dx: ((x / 120) * 2 - 1) * imgWidth
                                     property real dy: ((y / 120) * 2 - 1) * imgHeight
                                     property real lastUpdate: 0
 
-                                    TapHandler {
-                                        property bool resetPending: false
-                                        onPressedChanged: {
-                                            if (pressed) {
-                                                let now = Date.now()
-                                                if (now - joystickPad.globalClickTime < 300) {
-                                                    resetPending = true
-                                                    joystickPad.globalClickTime = 0
-                                                } else {
-                                                    joystickPad.globalClickTime = now
-                                                    resetOthers("joystick")
-                                                }
-                                            } else {
-                                                if (resetPending) {
-                                                    joyGlobalResetTimer.start()
-                                                    resetPending = false
-                                                }
-                                            }
-                                        }
-                                    }
-
+                                    TapHandler { onPressedChanged: { if (pressed) resetOthers("joystick") } }
                                     DragHandler {
-                                        id: dragHandler
-                                        target: joystickHandle
-                                        xAxis.minimum: 0
-                                        xAxis.maximum: joystickPad.width - joystickHandle.width
-                                        yAxis.minimum: 0
-                                        yAxis.maximum: joystickPad.height - joystickHandle.height
-
-                                        onActiveChanged: {
-                                            if (active) resetOthers("joystick")
-                                            else backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false)
-                                        }
+                                        id: dragHandler; target: joystickHandle
+                                        xAxis.minimum: 0; xAxis.maximum: joystickPad.width - joystickHandle.width
+                                        yAxis.minimum: 0; yAxis.maximum: joystickPad.height - joystickHandle.height
+                                        onActiveChanged: { if (!active) backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), false) }
                                     }
-
-                                    onXChanged: throttleUpdate()
-                                    onYChanged: throttleUpdate()
-
+                                    onXChanged: throttleUpdate(); onYChanged: throttleUpdate()
                                     function throttleUpdate() {
                                         if (dragHandler.active) {
-                                            let now = Date.now()
-                                            if (now - lastUpdate > 60) {
-                                                backend.processTranslation(Math.round(dx), Math.round(dy), false)
-                                                lastUpdate = now
-                                            }
+                                            let now = Date.now(); if (now - lastUpdate > 60) { backend.processTranslation(Math.round(dx), Math.round(dy), false); lastUpdate = now }
                                         }
                                     }
                                 }
                             }
 
-                            Button {
-                                text: "Aplicar"
-                                Layout.alignment: Qt.AlignVCenter
-                                onClicked: {
-                                    backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), true)
-                                    centerJoystick()
+                            ColumnLayout {
+                                Button {
+                                    text: "Reset"
+                                    enabled: parent.parent.parent.isChanged
+                                    onClicked: { centerJoystick(); backend.processTranslation(0, 0, false) }
+                                }
+                                Button {
+                                    text: "Aplicar"
+                                    enabled: parent.parent.parent.isChanged
+                                    onClicked: {
+                                        backend.processTranslation(Math.round(joystickHandle.dx), Math.round(joystickHandle.dy), true)
+                                        centerJoystick()
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // --- ESPELHAMENTOS ---
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 5
-
-                        Button {
-                            text: "Espelhar Horiz."
-                            Layout.fillWidth: true
-                            onClicked: backend.applyMirror(1)
-                        }
-
-                        Button {
-                            text: "Espelhar Vert."
-                            Layout.fillWidth: true
-                            onClicked: backend.applyMirror(0)
-                        }
+                        Button { text: "Espelhar Horiz."; Layout.fillWidth: true; onClicked: backend.applyMirror(1) }
+                        Button { text: "Espelhar Vert."; Layout.fillWidth: true; onClicked: backend.applyMirror(0) }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -518,11 +348,11 @@ Window {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
+                        property bool isChanged: meanSlider.value >= 3
 
                         Text {
-                            text: "Filtro da Média (Kernel: " + Math.round(meanSlider.value) + "x" + Math.round(meanSlider.value) + ")"
-                            font.pixelSize: 12
-                            color: "#333"
+                            text: parent.isChanged ? "Filtro da Média (Kernel: " + Math.round(meanSlider.value) + "x" + Math.round(meanSlider.value) + ")" : "Filtro da Média (Desativado)"
+                            font.pixelSize: 12; color: parent.isChanged ? "#333" : "#888"
                         }
 
                         RowLayout {
@@ -532,15 +362,28 @@ Window {
                             Slider {
                                 id: meanSlider
                                 Layout.fillWidth: true
-                                from: 3
-                                to: 9
-                                value: 5
-                                stepSize: 2 // Garante apenas números ímpares (3, 5, 7, 9)
+                                from: 1; to: 9; value: 1; stepSize: 2
+                                snapMode: Slider.SnapAlways
+
+                                property real lastUpdate: 0
+                                onPressedChanged: { if (pressed) resetOthers("mean"); else backend.processMeanFilter(Math.round(value), false) }
+                                onValueChanged: {
+                                    if (pressed) {
+                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processMeanFilter(Math.round(value), false); lastUpdate = now }
+                                    }
+                                }
+                            }
+
+                            Button {
+                                text: "Reset"
+                                enabled: parent.parent.isChanged
+                                onClicked: { meanSlider.value = 1; backend.processMeanFilter(1, false) }
                             }
 
                             Button {
                                 text: "Aplicar"
-                                onClicked: backend.applyMeanFilter(Math.round(meanSlider.value))
+                                enabled: parent.parent.isChanged
+                                onClicked: { backend.processMeanFilter(Math.round(meanSlider.value), true); meanSlider.value = 1 }
                             }
                         }
                     }
@@ -549,52 +392,63 @@ Window {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
+                        property bool isChanged: gaussKernelSlider.value >= 3
 
                         Text {
-                            text: "Filtro Gaussiano (Kernel: " + Math.round(gaussKernelSlider.value) + "x" + Math.round(gaussKernelSlider.value) + " | σ: " + (gaussSigmaSpin.value / 10.0).toFixed(1) + ")"
-                            font.pixelSize: 12
-                            color: "#333"
+                            text: parent.isChanged ? "Filtro Gaussiano (Kernel: " + Math.round(gaussKernelSlider.value) + "x" + Math.round(gaussKernelSlider.value) + " | σ: " + (gaussSigmaSpin.value / 10.0).toFixed(1) + ")" : "Filtro Gaussiano (Desativado)"
+                            font.pixelSize: 12; color: parent.isChanged ? "#333" : "#888"
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
 
-                            // Slider para o Kernel
                             Slider {
                                 id: gaussKernelSlider
                                 Layout.fillWidth: true
-                                from: 3
-                                to: 9
-                                value: 5
-                                stepSize: 2
+                                from: 1; to: 9; value: 1; stepSize: 2
+                                snapMode: Slider.SnapAlways
+
+                                property real lastUpdate: 0
+                                onPressedChanged: { if (pressed) resetOthers("gauss"); else backend.processGaussianFilter(Math.round(value), gaussSigmaSpin.realValue, false) }
+                                onValueChanged: {
+                                    if (pressed) {
+                                        let now = Date.now(); if (now - lastUpdate > 60) { backend.processGaussianFilter(Math.round(value), gaussSigmaSpin.realValue, false); lastUpdate = now }
+                                    }
+                                }
                             }
 
-                            // SpinBox "Decimal" para o Sigma (0.0 a 10.0)
                             SpinBox {
                                 id: gaussSigmaSpin
-                                from: 0
-                                to: 100        // Internamente de 0 a 100
-                                value: 15      // Valor inicial: 1.5
-                                stepSize: 5    // Pulos de 0.5 em 0.5
+                                enabled: parent.parent.isChanged
+                                from: 0; to: 100; value: 15; stepSize: 5
                                 Layout.preferredWidth: 80
 
                                 property real realValue: value / 10.0
+                                textFromValue: function(value, locale) { return Number(value / 10.0).toLocaleString(locale, 'f', 1) }
+                                valueFromText: function(text, locale) { return Number.fromLocaleString(locale, text) * 10 }
 
-                                // Transforma o número interno (15) em visual (1.5)
-                                textFromValue: function(value, locale) {
-                                    return Number(value / 10.0).toLocaleString(locale, 'f', 1)
-                                }
-
-                                // Transforma o visual (1.5) de volta no interno (15)
-                                valueFromText: function(text, locale) {
-                                    return Number.fromLocaleString(locale, text) * 10
+                                onValueChanged: {
+                                    if (parent.parent.isChanged && !gaussKernelSlider.pressed) {
+                                        backend.processGaussianFilter(Math.round(gaussKernelSlider.value), realValue, false)
+                                    }
                                 }
                             }
 
                             Button {
+                                text: "Reset"
+                                enabled: parent.parent.isChanged
+                                onClicked: { gaussKernelSlider.value = 1; gaussSigmaSpin.value = 15; backend.processGaussianFilter(1, 0, false) }
+                            }
+
+                            Button {
                                 text: "Aplicar"
-                                onClicked: backend.applyGaussianFilter(Math.round(gaussKernelSlider.value), gaussSigmaSpin.realValue)
+                                enabled: parent.parent.isChanged
+                                onClicked: {
+                                    backend.processGaussianFilter(Math.round(gaussKernelSlider.value), gaussSigmaSpin.realValue, true)
+                                    gaussKernelSlider.value = 1
+                                    gaussSigmaSpin.value = 15
+                                }
                             }
                         }
                     }
@@ -607,54 +461,24 @@ Window {
                 }
             }
 
-            // Bloco de visualização central (Imagens lado a lado)
+            // Bloco de visualização central
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 10
 
-                // Visualizador da Imagem Principal
                 Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    color: "#e0e0e0"
-                    border.color: "#999999"
-
-                    Image {
-                        id: imageViewer
-                        anchors.fill: parent
-                        anchors.margins: 5
-                        fillMode: Image.PreserveAspectFit
-                        cache: false
-                    }
+                    Layout.fillWidth: true; Layout.fillHeight: true; color: "#e0e0e0"; border.color: "#999999"
+                    Image { id: imageViewer; anchors.fill: parent; anchors.margins: 5; fillMode: Image.PreserveAspectFit; cache: false }
                 }
 
-                // Visualizador do Histograma (Alternável)
                 Rectangle {
                     visible: showHistogram
-                    Layout.preferredWidth: 350
-                    Layout.fillHeight: true
-                    color: "#f5f5f5"
-                    border.color: "#999999"
-
+                    Layout.preferredWidth: 350; Layout.fillHeight: true; color: "#f5f5f5"; border.color: "#999999"
                     ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 5
-
-                        Text {
-                            text: "<b>Histograma de Intensidades</b>"
-                            Layout.alignment: Qt.AlignHCenter
-                            font.pixelSize: 13
-                        }
-
-                        Image {
-                            id: histogramViewer
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            fillMode: Image.PreserveAspectFit
-                            cache: false
-                        }
+                        anchors.fill: parent; anchors.margins: 10; spacing: 5
+                        Text { text: "<b>Histograma de Intensidades</b>"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 13 }
+                        Image { id: histogramViewer; Layout.fillWidth: true; Layout.fillHeight: true; fillMode: Image.PreserveAspectFit; cache: false }
                     }
                 }
             }
@@ -663,24 +487,10 @@ Window {
 
     Connections {
         target: backend
-        function onImageChanged(imgUrl) {
-            imageViewer.source = ""
-            imageViewer.source = imgUrl
-        }
-        function onHistogramChanged(histUrl) {
-            histogramViewer.source = ""
-            histogramViewer.source = histUrl
-        }
-        function onDimensionsChanged(w, h) {
-            imgWidth = w;
-            imgHeight = h;
-        }
-        function onErrorOcurred(msg) {
-            console.warn(msg)
-        }
-        function onRequestSaveAs(suggestedUrl) {
-            saveAsDialog.currentFile = suggestedUrl
-            saveAsDialog.open()
-        }
+        function onImageChanged(imgUrl) { imageViewer.source = ""; imageViewer.source = imgUrl }
+        function onHistogramChanged(histUrl) { histogramViewer.source = ""; histogramViewer.source = histUrl }
+        function onDimensionsChanged(w, h) { imgWidth = w; imgHeight = h; }
+        function onErrorOcurred(msg) { console.warn(msg) }
+        function onRequestSaveAs(suggestedUrl) { saveAsDialog.currentFile = suggestedUrl; saveAsDialog.open() }
     }
 }

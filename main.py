@@ -49,7 +49,7 @@ class AdulisBackend(QObject):
     imageChanged = Signal(str)
     histogramChanged = Signal(str)
     errorOcurred = Signal(str)
-    requestSaveAs = Signal(str) # Agora envia a sugestão de nome para o QML
+    requestSaveAs = Signal(str)
     dimensionsChanged = Signal(int, int)
 
     def __init__(self, image_provider):
@@ -58,7 +58,6 @@ class AdulisBackend(QObject):
         self.original_image = None
         self.current_image = None
 
-        # Histórico de caminhos (Origem vs Destino)
         self.original_file_path = None
         self.current_save_path = None
 
@@ -68,13 +67,20 @@ class AdulisBackend(QObject):
         if not path:
             path = file_url.replace("file:///", "").replace("file://", "")
 
-        img = cv2.imread(path)
+        stream = open(path, "rb")
+        bytes_array = bytearray(stream.read())
+        numpy_array = np.asarray(bytes_array, dtype=np.uint8)
+        img = cv2.imdecode(numpy_array, cv2.IMREAD_UNCHANGED)
+
         if img is None:
             self.errorOcurred.emit("Falha ao carregar a imagem. Verifique o caminho ou formato.")
             return
 
+        if len(img.shape) == 3 and img.shape[2] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
         self.original_file_path = Path(path)
-        self.current_save_path = None # É uma imagem nova, reseta o destino de gravação
+        self.current_save_path = None
 
         self.original_image = img.copy()
         self.current_image = img.copy()
@@ -82,14 +88,12 @@ class AdulisBackend(QObject):
 
     @Slot()
     def requestSaveAsDialog(self):
-        """ Gera a sugestão de nome e pede ao QML para abrir o diálogo de Salvar Como """
         if self.current_image is None:
             self.errorOcurred.emit("Nenhuma imagem ativa para salvar.")
             return
 
         suggested_url = ""
         if self.original_file_path:
-            # Cria o nome sugerido ex: "foto_edited.jpg" na mesma pasta
             stem = self.original_file_path.stem
             suffix = self.original_file_path.suffix
             directory = self.original_file_path.parent
@@ -100,28 +104,32 @@ class AdulisBackend(QObject):
 
     @Slot(str)
     def saveImage(self, file_url):
-        """ Salva a imagem no destino final (acionado após o utilizador confirmar no diálogo) """
         if self.current_image is None: return
 
         path = QUrl(file_url).toLocalFile()
         if not path:
             path = file_url.replace("file:///", "").replace("file://", "")
 
-        cv2.imwrite(path, self.current_image)
-        self.current_save_path = Path(path) # Agora sabe que o arquivo já foi salvo!
+        path_obj = Path(path)
+        ext = path_obj.suffix if path_obj.suffix else '.png'
+
+        success, encoded = cv2.imencode(ext, self.current_image)
+        if success:
+            encoded.tofile(str(path_obj))
+            self.current_save_path = path_obj
 
     @Slot()
     def saveDefault(self):
-        """ Comportamento do botão 'Salvar' (Ctrl+S) """
         if self.current_image is None:
             return
 
         if self.current_save_path is None:
-            # Primeira vez a salvar: Comporta-se como 'Salvar Como'
             self.requestSaveAsDialog()
         else:
-            # Já foi salvo antes: Substitui o ficheiro existente no disco
-            cv2.imwrite(str(self.current_save_path), self.current_image)
+            ext = self.current_save_path.suffix if self.current_save_path.suffix else '.png'
+            success, encoded = cv2.imencode(ext, self.current_image)
+            if success:
+                encoded.tofile(str(self.current_save_path))
 
     @Slot()
     def resetImage(self):
@@ -129,9 +137,6 @@ class AdulisBackend(QObject):
             self.current_image = self.original_image.copy()
             self._updateImage(self.current_image)
 
-    # ==========================================
-    # LÓGICA DE RENDERIZAÇÃO NA RAM
-    # ==========================================
     def _updateImage(self, img_to_show):
         if img_to_show is None: return
         h, w = img_to_show.shape[:2]
@@ -283,17 +288,32 @@ class AdulisBackend(QObject):
         self.current_image = cv2.flip(self.current_image, flipCode)
         self._updateImage(self.current_image)
 
-    @Slot(int)
-    def applyMeanFilter(self, kernel_size):
+    # ==========================================
+    # TRANSFORMAÇÕES POR VIZINHANÇA
+    # ==========================================
+    @Slot(int, bool)
+    def processMeanFilter(self, kernel_size, apply):
         if self.current_image is None: return
-        self.current_image = cv2.blur(self.current_image, (kernel_size, kernel_size), borderType=cv2.BORDER_REPLICATE)
-        self._updateImage(self.current_image)
 
-    @Slot(int, float)
-    def applyGaussianFilter(self, kernel_size, sigma):
+        if kernel_size < 3:
+            res = self.current_image.copy()
+        else:
+            res = cv2.blur(self.current_image, (kernel_size, kernel_size), borderType=cv2.BORDER_REPLICATE)
+
+        if apply: self.current_image = res
+        self._updateImage(res)
+
+    @Slot(int, float, bool)
+    def processGaussianFilter(self, kernel_size, sigma, apply):
         if self.current_image is None: return
-        self.current_image = cv2.GaussianBlur(self.current_image, (kernel_size, kernel_size), sigma, borderType=cv2.BORDER_REPLICATE)
-        self._updateImage(self.current_image)
+
+        if kernel_size < 3:
+            res = self.current_image.copy()
+        else:
+            res = cv2.GaussianBlur(self.current_image, (kernel_size, kernel_size), sigma, borderType=cv2.BORDER_REPLICATE)
+
+        if apply: self.current_image = res
+        self._updateImage(res)
 
     @Slot()
     def addNoise(self):
