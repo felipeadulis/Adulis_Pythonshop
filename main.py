@@ -10,9 +10,13 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickImageProvider
 
 # ==========================================
-# 1. O PROVEDOR DE IMAGENS NA RAM
+# 1. IN-MEMORY IMAGE PROVIDER
 # ==========================================
-class AdulisImageProvider(QQuickImageProvider):
+class PythonshopImageProvider(QQuickImageProvider):
+    """
+    Serves OpenCV images directly from RAM to QML
+    to bypass disk write bottlenecks.
+    """
     def __init__(self):
         super().__init__(QQuickImageProvider.Image)
         self.images = {}
@@ -43,9 +47,13 @@ class AdulisImageProvider(QQuickImageProvider):
 
 
 # ==========================================
-# 2. O BACKEND PRINCIPAL
+# 2. MAIN BACKEND CONTROLLER
 # ==========================================
-class AdulisBackend(QObject):
+class PythonshopBackend(QObject):
+    """
+    Core backend controller handling image loading,
+    saving, transformations, and histogram calculations.
+    """
     imageChanged = Signal(str)
     histogramChanged = Signal(str)
     errorOcurred = Signal(str)
@@ -143,13 +151,16 @@ class AdulisBackend(QObject):
             self.current_image = self.original_image.copy()
             self._updateImage(self.current_image)
 
+    # ------------------------------------------
+    # RENDERING & HISTOGRAM GENERATION
+    # ------------------------------------------
     def _updateImage(self, img_to_show):
         if img_to_show is None: return
         h, w = img_to_show.shape[:2]
         self.dimensionsChanged.emit(w, h)
 
         self.provider.update_image("main", img_to_show)
-        self.imageChanged.emit(f"image://adulis/main?t={int(time.time() * 1000)}")
+        self.imageChanged.emit(f"image://pythonshop/main?t={int(time.time() * 1000)}")
         self._updateHistogram(img_to_show)
 
     def _updateHistogram(self, img):
@@ -175,14 +186,14 @@ class AdulisBackend(QObject):
                     cv2.line(hist_img, (x1, y1), (x2, y2), col, 2)
 
         self.provider.update_image("hist", hist_img)
-        self.histogramChanged.emit(f"image://adulis/hist?t={int(time.time() * 1000)}")
+        self.histogramChanged.emit(f"image://pythonshop/hist?t={int(time.time() * 1000)}")
 
     def _get_border_value(self, img):
         return (255, 255, 255) if len(img.shape) == 3 else 255
 
-    # ==========================================
-    # TRANSFORMAÇÕES PONTUAIS & GEOMÉTRICAS
-    # ==========================================
+    # ------------------------------------------
+    # POINT & GEOMETRIC TRANSFORMATIONS
+    # ------------------------------------------
     @Slot(int, bool)
     def processBrightness(self, value, apply):
         if self.current_image is None: return
@@ -294,9 +305,9 @@ class AdulisBackend(QObject):
         self.current_image = cv2.flip(self.current_image, flipCode)
         self._updateImage(self.current_image)
 
-    # ==========================================
-    # TRANSFORMAÇÕES POR VIZINHANÇA
-    # ==========================================
+    # ------------------------------------------
+    # NEIGHBORHOOD TRANSFORMATIONS
+    # ------------------------------------------
     @Slot(int, bool)
     def processMeanFilter(self, kernel_size, apply):
         if self.current_image is None: return
@@ -336,10 +347,10 @@ if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
 
-    image_provider = AdulisImageProvider()
-    engine.addImageProvider("adulis", image_provider)
+    image_provider = PythonshopImageProvider()
+    engine.addImageProvider("pythonshop", image_provider)
 
-    backend = AdulisBackend(image_provider)
+    backend = PythonshopBackend(image_provider)
     engine.rootContext().setContextProperty("backend", backend)
 
     qml_file = Path(__file__).resolve().parent / "main.qml"

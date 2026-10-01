@@ -15,7 +15,7 @@ Window {
     property bool showHistogram: true
     property bool hasImage: false
 
-    // --- ATALHOS DE TECLADO GLOBAIS ---
+    // Global keyboard shortcuts
     Shortcut {
         sequence: "Ctrl+O"
         onActivated: openDialog.open()
@@ -29,6 +29,7 @@ Window {
         onActivated: backend.requestSaveAsDialog()
     }
 
+    // Resets inactive controls to default values
     function resetOthers(activeControl) {
         if (!hasImage) return
         if (activeControl !== "brightness" && brightnessSlider.value !== 0) {
@@ -129,7 +130,7 @@ Window {
                     width: parent.width - 15
                     spacing: 10
 
-                    // --- BOTÕES DE SALVAR E RESET LADO A LADO ---
+                    // Shortcut actions panel
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 5
@@ -162,7 +163,7 @@ Window {
                         onClicked: { resetOthers("grayscale"); backend.applyGrayscale() }
                     }
 
-                    // --- AJUSTE DE BRILHO ---
+                    // Brightness control
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
@@ -238,7 +239,7 @@ Window {
                         }
                     }
 
-                    // --- AJUSTE DE CONTRASTE ---
+                    // Contrast control
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
@@ -343,7 +344,7 @@ Window {
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
                     Text { text: "<b>Transformações Geométricas</b>" }
 
-                    // --- ROTAÇÃO ---
+                    // Rotation control
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
@@ -419,7 +420,7 @@ Window {
                         }
                     }
 
-                    // --- TRANSLAÇÃO (JOYSTICK) ---
+                    // Translation joystick control
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
@@ -571,7 +572,7 @@ Window {
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
                     Text { text: "<b>Transformações por Vizinhança</b>" }
 
-                    // --- FILTRO DA MÉDIA ---
+                    // Mean filter control
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
@@ -649,7 +650,7 @@ Window {
                         }
                     }
 
-                    // --- FILTRO GAUSSIANO ---
+                    // Gaussian filter control
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
@@ -758,13 +759,13 @@ Window {
                 }
             }
 
-            // Bloco de visualização central
+            // Central viewport section
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 10
 
-                // Container da imagem principal (Ocupa o espaço restante)
+                // Main image viewport
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -791,7 +792,7 @@ Window {
                     }
                 }
 
-                // Visualizador do Histograma (Tamanho fixo amplo de 420px)
+                // Histogram viewport (fixed 420px width)
                 Rectangle {
                     visible: showHistogram && hasImage
                     Layout.preferredWidth: 420
