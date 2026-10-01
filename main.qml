@@ -514,16 +514,91 @@ Window {
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
                     Text { text: "<b>Transformações por Vizinhança</b>" }
 
-                    Button {
-                        text: "Filtro da Média (Kernel 5x5)"
+                    // --- FILTRO DA MÉDIA ---
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        onClicked: backend.applyMeanFilter(5)
+                        spacing: 2
+
+                        Text {
+                            text: "Filtro da Média (Kernel: " + Math.round(meanSlider.value) + "x" + Math.round(meanSlider.value) + ")"
+                            font.pixelSize: 12
+                            color: "#333"
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            Slider {
+                                id: meanSlider
+                                Layout.fillWidth: true
+                                from: 3
+                                to: 9
+                                value: 5
+                                stepSize: 2 // Garante apenas números ímpares (3, 5, 7, 9)
+                            }
+
+                            Button {
+                                text: "Aplicar"
+                                onClicked: backend.applyMeanFilter(Math.round(meanSlider.value))
+                            }
+                        }
                     }
-                    Button {
-                        text: "Filtro Gaussiano (5x5, σ=1.5)"
+
+                    // --- FILTRO GAUSSIANO ---
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        onClicked: backend.applyGaussianFilter(5, 1.5)
+                        spacing: 2
+
+                        Text {
+                            text: "Filtro Gaussiano (Kernel: " + Math.round(gaussKernelSlider.value) + "x" + Math.round(gaussKernelSlider.value) + " | σ: " + (gaussSigmaSpin.value / 10.0).toFixed(1) + ")"
+                            font.pixelSize: 12
+                            color: "#333"
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            // Slider para o Kernel
+                            Slider {
+                                id: gaussKernelSlider
+                                Layout.fillWidth: true
+                                from: 3
+                                to: 9
+                                value: 5
+                                stepSize: 2
+                            }
+
+                            // SpinBox "Decimal" para o Sigma (0.0 a 10.0)
+                            SpinBox {
+                                id: gaussSigmaSpin
+                                from: 0
+                                to: 100        // Internamente de 0 a 100
+                                value: 15      // Valor inicial: 1.5
+                                stepSize: 5    // Pulos de 0.5 em 0.5
+                                Layout.preferredWidth: 80
+
+                                property real realValue: value / 10.0
+
+                                // Transforma o número interno (15) em visual (1.5)
+                                textFromValue: function(value, locale) {
+                                    return Number(value / 10.0).toLocaleString(locale, 'f', 1)
+                                }
+
+                                // Transforma o visual (1.5) de volta no interno (15)
+                                valueFromText: function(text, locale) {
+                                    return Number.fromLocaleString(locale, text) * 10
+                                }
+                            }
+
+                            Button {
+                                text: "Aplicar"
+                                onClicked: backend.applyGaussianFilter(Math.round(gaussKernelSlider.value), gaussSigmaSpin.realValue)
+                            }
+                        }
                     }
+
                     Button {
                         text: "Adicionar Ruído"
                         Layout.fillWidth: true
