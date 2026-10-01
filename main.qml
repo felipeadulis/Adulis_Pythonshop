@@ -718,7 +718,7 @@ Window {
                             SpinBox {
                                 id: gaussSigmaSpin
                                 enabled: hasImage && parent.parent.isChanged
-                                from: 0; to: 100; value: 15; stepSize: 5
+                                from: 5; to: 100; value: 15; stepSize: 5
                                 Layout.preferredWidth: 80
 
                                 property real realValue: value / 10.0
