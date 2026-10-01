@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import time
 from pathlib import Path
-from PySide6.QtCore import QObject, Slot, Signal, QUrl, QSize
+from PySide6.QtCore import QObject, Slot, Signal, QUrl
 from PySide6.QtGui import QGuiApplication, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickImageProvider
@@ -13,18 +13,12 @@ from PySide6.QtQuick import QQuickImageProvider
 # 1. O PROVEDOR DE IMAGENS NA RAM
 # ==========================================
 class AdulisImageProvider(QQuickImageProvider):
-    """
-    Esta classe guarda as imagens geradas pelo OpenCV diretamente na memória RAM.
-    O QML chama 'requestImage' usando um link como 'image://adulis/main'
-    """
     def __init__(self):
         super().__init__(QQuickImageProvider.Image)
         self.images = {}
 
     def requestImage(self, id_str, size, requestedSize):
-        # Remove a query string (?t=...) que usamos para enganar o cache do QML
         clean_id = id_str.split('?')[0]
-
         if clean_id in self.images:
             img = self.images[clean_id]
             if size:
@@ -34,16 +28,13 @@ class AdulisImageProvider(QQuickImageProvider):
         return QImage()
 
     def update_image(self, id_str, cv_img):
-        if cv_img is None:
-            return
-
-        # Converte a matriz do OpenCV (NumPy BGR) para QImage (Qt RGB) na RAM
-        if len(cv_img.shape) == 2: # Tons de cinza
+        if cv_img is None: return
+        if len(cv_img.shape) == 2:
             h, w = cv_img.shape
             bytes_per_line = w
             qimg = QImage(cv_img.data, w, h, bytes_per_line, QImage.Format_Grayscale8)
-            self.images[id_str] = qimg.copy() # .copy() protege contra falhas de memória
-        else: # Colorida
+            self.images[id_str] = qimg.copy()
+        else:
             h, w, ch = cv_img.shape
             bytes_per_line = ch * w
             rgb_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
@@ -58,7 +49,7 @@ class AdulisBackend(QObject):
     imageChanged = Signal(str)
     histogramChanged = Signal(str)
     errorOcurred = Signal(str)
-    requestSaveAs = Signal()
+    requestSaveAs = Signal(str) # Agora envia a sugestão de nome para o QML
     dimensionsChanged = Signal(int, int)
 
     def __init__(self, image_provider):
@@ -66,7 +57,10 @@ class AdulisBackend(QObject):
         self.provider = image_provider
         self.original_image = None
         self.current_image = None
-        self.current_file_path = None
+
+        # Histórico de caminhos (Origem vs Destino)
+        self.original_file_path = None
+        self.current_save_path = None
 
     @Slot(str)
     def loadImage(self, file_url):
@@ -79,41 +73,55 @@ class AdulisBackend(QObject):
             self.errorOcurred.emit("Falha ao carregar a imagem. Verifique o caminho ou formato.")
             return
 
-        self.current_file_path = Path(path)
+        self.original_file_path = Path(path)
+        self.current_save_path = None # É uma imagem nova, reseta o destino de gravação
+
         self.original_image = img.copy()
         self.current_image = img.copy()
         self._updateImage(self.current_image)
 
-    # As funções de guardar continuam a usar o disco (o que é correto para salvar ficheiros permanentes)
+    @Slot()
+    def requestSaveAsDialog(self):
+        """ Gera a sugestão de nome e pede ao QML para abrir o diálogo de Salvar Como """
+        if self.current_image is None:
+            self.errorOcurred.emit("Nenhuma imagem ativa para salvar.")
+            return
+
+        suggested_url = ""
+        if self.original_file_path:
+            # Cria o nome sugerido ex: "foto_edited.jpg" na mesma pasta
+            stem = self.original_file_path.stem
+            suffix = self.original_file_path.suffix
+            directory = self.original_file_path.parent
+            suggested_path = directory / f"{stem}_edited{suffix}"
+            suggested_url = QUrl.fromLocalFile(str(suggested_path)).toString()
+
+        self.requestSaveAs.emit(suggested_url)
+
     @Slot(str)
     def saveImage(self, file_url):
-        if self.current_image is None:
-            self.errorOcurred.emit("Nenhuma imagem para salvar.")
-            return
+        """ Salva a imagem no destino final (acionado após o utilizador confirmar no diálogo) """
+        if self.current_image is None: return
 
         path = QUrl(file_url).toLocalFile()
         if not path:
             path = file_url.replace("file:///", "").replace("file://", "")
 
         cv2.imwrite(path, self.current_image)
-        self.current_file_path = Path(path)
+        self.current_save_path = Path(path) # Agora sabe que o arquivo já foi salvo!
 
     @Slot()
     def saveDefault(self):
+        """ Comportamento do botão 'Salvar' (Ctrl+S) """
         if self.current_image is None:
-            self.errorOcurred.emit("Nenhuma imagem ativa para salvar.")
             return
 
-        if self.current_file_path is None:
-            self.requestSaveAs.emit()
-            return
-
-        directory = self.current_file_path.parent
-        stem = self.current_file_path.stem
-        suffix = self.current_file_path.suffix
-        save_path = directory / f"{stem}_edited{suffix}"
-
-        cv2.imwrite(str(save_path), self.current_image)
+        if self.current_save_path is None:
+            # Primeira vez a salvar: Comporta-se como 'Salvar Como'
+            self.requestSaveAsDialog()
+        else:
+            # Já foi salvo antes: Substitui o ficheiro existente no disco
+            cv2.imwrite(str(self.current_save_path), self.current_image)
 
     @Slot()
     def resetImage(self):
@@ -129,13 +137,8 @@ class AdulisBackend(QObject):
         h, w = img_to_show.shape[:2]
         self.dimensionsChanged.emit(w, h)
 
-        # 1. Entrega a matriz ao provedor de RAM
         self.provider.update_image("main", img_to_show)
-
-        # 2. Avisa o QML para puxar a imagem virtual. O "?t=" força a atualização da interface
         self.imageChanged.emit(f"image://adulis/main?t={int(time.time() * 1000)}")
-
-        # 3. Atualiza o histograma
         self._updateHistogram(img_to_show)
 
     def _updateHistogram(self, img):
@@ -149,7 +152,7 @@ class AdulisBackend(QObject):
                 cv2.line(hist_img, (int(x * w_hist / 256), h_hist - 10),
                          (int(x * w_hist / 256), h_hist - 10 - int(hist[x])), (50, 50, 50), 2)
         else:
-            colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)] # B, G, R
+            colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
             for i, col in enumerate(colors):
                 hist = cv2.calcHist([img], [i], None, [256], [0, 256])
                 cv2.normalize(hist, hist, 0, h_hist - 20, cv2.NORM_MINMAX)
@@ -160,7 +163,6 @@ class AdulisBackend(QObject):
                     x2 = int((x+1) * w_hist / 256)
                     cv2.line(hist_img, (x1, y1), (x2, y2), col, 2)
 
-        # Passa o histograma para a RAM em vez de guardar no disco
         self.provider.update_image("hist", hist_img)
         self.histogramChanged.emit(f"image://adulis/hist?t={int(time.time() * 1000)}")
 
@@ -308,11 +310,9 @@ if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
 
-    # Inicia o provedor e regista-o com a tag "adulis"
     image_provider = AdulisImageProvider()
     engine.addImageProvider("adulis", image_provider)
 
-    # Inicia o Backend passando o provedor
     backend = AdulisBackend(image_provider)
     engine.rootContext().setContextProperty("backend", backend)
 

@@ -60,7 +60,7 @@ Window {
                 title: qsTr("Arquivo")
                 MenuItem { text: qsTr("Abrir..."); onTriggered: openDialog.open() }
                 MenuItem { text: qsTr("Salvar"); onTriggered: backend.saveDefault() }
-                MenuItem { text: qsTr("Salvar Como..."); onTriggered: saveAsDialog.open() }
+                MenuItem { text: qsTr("Salvar Como..."); onTriggered: backend.requestSaveAsDialog() }
             }
             Menu {
                 title: qsTr("Exibir")
@@ -591,7 +591,9 @@ Window {
         function onErrorOcurred(msg) {
             console.warn(msg)
         }
-        function onRequestSaveAs() {
+        function onRequestSaveAs(suggestedUrl) {
+            // Recebe do Python a sugestão e coloca no diálogo do Windows
+            saveAsDialog.currentFile = suggestedUrl
             saveAsDialog.open()
         }
     }
