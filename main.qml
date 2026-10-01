@@ -493,10 +493,22 @@ Window {
                         }
                     }
 
-                    Button {
-                        text: "Espelhamento Horizontal"
+                    // --- ESPELHAMENTOS ---
+                    RowLayout {
                         Layout.fillWidth: true
-                        onClicked: backend.applyMirror(1)
+                        spacing: 5
+
+                        Button {
+                            text: "Espelhar Horiz."
+                            Layout.fillWidth: true
+                            onClicked: backend.applyMirror(1)
+                        }
+
+                        Button {
+                            text: "Espelhar Vert."
+                            Layout.fillWidth: true
+                            onClicked: backend.applyMirror(0)
+                        }
                     }
 
                     Rectangle { height: 1; Layout.fillWidth: true; color: "gray" }
@@ -592,7 +604,6 @@ Window {
             console.warn(msg)
         }
         function onRequestSaveAs(suggestedUrl) {
-            // Recebe do Python a sugestão e coloca no diálogo do Windows
             saveAsDialog.currentFile = suggestedUrl
             saveAsDialog.open()
         }
